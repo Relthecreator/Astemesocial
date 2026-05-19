@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Camera, Trash2, RefreshCcw, VideoOff, AlertCircle, Sparkles, Smile, Heart, 
   UserPlus, Users, Home, Send, X, UserCheck, Globe, MessageCircle, MessageSquare, 
-  User, Search, PlusCircle, Image as ImageIcon, Type, TrendingUp, Hash, Check,
-  Bell, Compass, Disc, BadgeCheck, Palette, Music
+  User, Search, PlusCircle, ImageIcon, Type, TrendingUp, Hash, Check,
+  Bell, Compass, Disc, BadgeCheck, Palette, Music, Play, Pause
 } from 'lucide-react';
 
 // --- Firebase Initialization ---
@@ -23,15 +23,12 @@ const firebaseConfig = {
   appId: "1:602552648047:web:b070b83b77da3a4c80289a"
 };
 
-// Auto-switch to Online mode because we have real keys successfully attached!
-const isLocalMode = false;
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = "astemesocial-global-room"; // Ensures everyone connects to the exact same global room!
+const appId = "astemesocial-global-room"; 
 
-// --- Constants ---
+// --- Constants & Media ---
 const FILTERS = [
   { name: 'Normal', value: 'none' },
   { name: 'B & W', value: 'grayscale(100%)' },
@@ -43,7 +40,20 @@ const FILTERS = [
 ];
 
 const EMOJIS = ['😎', '👻', '👾', '🦊', '🚀', '🌟', '🦄', '🦖', '🍕', '🎸', '🐱', '🍩', '🔮', '👽', '🔥', '💖'];
-const SOUNDTRACKS = ['None', 'Lofi Chill ☕️', 'Synthwave 🌃', 'Pop Anthem 🎤', 'Acoustic Vibes 🎸', 'Trap Beat 🎧', 'Cyberpunk 🦾'];
+
+// Actual playable audio tracks!
+const SOUNDTRACKS = [
+  'None', 'Lofi Chill ☕️', 'Synthwave 🌃', 'Pop Anthem 🎤', 'Acoustic Vibes 🎸', 'Trap Beat 🎧', 'Cyberpunk 🦾'
+];
+
+const AUDIO_MAP = {
+  'Lofi Chill ☕️': 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
+  'Synthwave 🌃': 'https://cdn.pixabay.com/download/audio/2022/12/22/audio_fb41183c50.mp3',
+  'Pop Anthem 🎤': 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3',
+  'Acoustic Vibes 🎸': 'https://cdn.pixabay.com/download/audio/2021/11/25/audio_91b3bb1023.mp3',
+  'Trap Beat 🎧': 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_271c6eb3db.mp3',
+  'Cyberpunk 🦾': 'https://cdn.pixabay.com/download/audio/2022/10/14/audio_99392e22c0.mp3'
+};
 
 const GRADIENTS = [
   'from-pink-500 to-rose-500', 'from-purple-600 to-indigo-600', 'from-cyan-500 to-blue-500',
@@ -54,11 +64,7 @@ const CURATED_GIFS = [
   { name: 'Happy Dance', url: 'https://media.giphy.com/media/l3V0lsGtTMSB5YNgA/giphy.gif' },
   { name: 'Retro Sunset', url: 'https://media.giphy.com/media/3d9rkLNvMXahgQVpM4/giphy.gif' },
   { name: 'Cat Vibe', url: 'https://media.giphy.com/media/GeimqsH0TLDt4tScGw/giphy.gif' },
-  { name: 'Laser Eyes', url: 'https://media.giphy.com/media/26n6WywJyum5o9fWM/giphy.gif' },
-  { name: 'Nyan Cat', url: 'https://media.giphy.com/media/sIIhZUk24moGQ/giphy.gif' },
-  { name: 'SpongeBob Smile', url: 'https://media.giphy.com/media/3o7aubqB57bB89vDoc/giphy.gif' },
-  { name: 'Mind Blown', url: 'https://media.giphy.com/media/2RqsuAkVK86hy38gWA/giphy.gif' },
-  { name: 'Floating Hearts', url: 'https://media.giphy.com/media/Lp71Uqyzn28JJ34P3q/giphy.gif' }
+  { name: 'Laser Eyes', url: 'https://media.giphy.com/media/26n6WywJyum5o9fWM/giphy.gif' }
 ];
 
 const timeAgo = (timestamp) => {
@@ -72,20 +78,39 @@ const timeAgo = (timestamp) => {
   return `${Math.floor(hours / 24)}d ago`;
 };
 
+// Vibe Engine: Floating Particle Component
+const ParticleBurst = ({ particles }) => (
+  <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
+    {particles.map(p => (
+      <div 
+        key={p.id} 
+        className="absolute text-xl animate-float-up opacity-0"
+        style={{
+          left: `${p.x}px`,
+          top: `${p.y}px`,
+          '--tx': `${p.vx}px`,
+          '--ty': `${p.vy}px`
+        }}
+      >
+        💖
+      </div>
+    ))}
+  </div>
+);
+
 export default function App() {
-  // --- Auth / Base State ---
+  // --- Auth & Base State ---
   const [user, setUser] = useState(null);
   const [isAuthenticating, setIsAuthenticating] = useState(true);
-  
   const [profile, setProfile] = useState(null);
   
-  // --- Navigation / View State ---
-  const [currentTab, setCurrentTab] = useState('feed'); // feed | explore | create | inbox | profile
-  const [inboxSubTab, setInboxSubTab] = useState('activity'); // activity | messages
+  // --- Navigation ---
+  const [currentTab, setCurrentTab] = useState('feed'); 
+  const [inboxSubTab, setInboxSubTab] = useState('activity'); 
   const [feedFilter, setFeedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // --- Live Feeds & Data ---
+  // --- Data Feeds ---
   const [stories, setStories] = useState([]);
   const [friends, setFriends] = useState([]);
   const [comments, setComments] = useState([]);
@@ -119,7 +144,12 @@ export default function App() {
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [isPosting, setIsPosting] = useState(false);
 
-  // --- UI States ---
+  // --- Vibe Engine States (Music & Particles) ---
+  const [particles, setParticles] = useState([]);
+  const [currentAudio, setCurrentAudio] = useState({ url: null, postId: null });
+  const audioRef = useRef(null);
+
+  // --- UI & Chat States ---
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editEmoji, setEditEmoji] = useState('😎');
@@ -129,45 +159,41 @@ export default function App() {
   const [activeChatUser, setActiveChatUser] = useState(null);
   const [newMessageText, setNewMessageText] = useState('');
   const [focusedExplorePost, setFocusedExplorePost] = useState(null);
+  
+  const chatEndRef = useRef(null);
+  const prevMessagesLength = useRef(0);
 
   // --- Helper Notify Engine ---
-  const notify = (text) => {
+  const notify = useCallback((text) => {
     const newNotif = { id: Date.now().toString(), text, time: Date.now(), read: false };
     setNotifications(prev => [newNotif, ...prev]);
-  };
+  }, []);
 
-  const markNotifsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
+  const markNotifsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
 
   // Handle Video Element Ready State
   const handleVideoCanPlay = () => {
     setIsCameraReady(true);
   };
 
-  // --- Firebase Authentication (RULE 3 - Auth First) ---
+  // --- Firebase Authentication ---
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) { 
-        console.error("Auth Error:", err); 
-      } finally {
-        setIsAuthenticating(false);
-      }
+        await signInAnonymously(auth);
+      } catch (err) { console.error("Auth Error:", err); } 
+      finally { setIsAuthenticating(false); }
     };
     initAuth();
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // Sync / Load Profiles (RULE 1 - Strict Paths)
+  // --- Data Listeners ---
   useEffect(() => {
     if (!user) return;
-    const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), (snap) => {
+    
+    // Load Profile
+    const unsubProf = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         setProfile(data);
@@ -177,45 +203,54 @@ export default function App() {
       } else {
         const defaultProfile = { 
           username: `User_${Math.floor(Math.random() * 9000) + 1000}`, 
-          emoji: '😎', 
-          bio: 'Ready to post!', 
-          createdAt: Date.now(), 
-          isVerified: true 
+          emoji: '😎', bio: 'Ready to post!', createdAt: Date.now(), isVerified: true 
         };
-        // Guarantee profile sets locally immediately so posting isn't blocked
         setProfile(defaultProfile);
-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), defaultProfile)
-          .catch(e => console.error("Error creating profile:", e));
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), defaultProfile);
       }
     });
-    return unsub;
-  }, [user]);
 
-  // Sync Global Feeds (RULE 2 - No complex queries, sort/filter locally)
-  useEffect(() => {
-    if (!user) return;
+    // Load Feeds
     const unsubStories = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), (snap) => setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt)));
-    const unsubProfiles = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'profiles'), (snap) => setAllProfiles(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubAllProfiles = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'profiles'), (snap) => setAllProfiles(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubFriends = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'friends'), (snap) => setFriends(snap.docs.map(d => d.id)));
     const unsubComments = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'comments'), (snap) => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt - b.createdAt)));
-    const unsubMessages = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), (snap) => setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt - b.createdAt)));
-    return () => { unsubStories(); unsubProfiles(); unsubFriends(); unsubComments(); unsubMessages(); };
+    
+    // Load Messages & Check for NEW messages to trigger notifications
+    const unsubMessages = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), (snap) => {
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt - b.createdAt);
+      setMessages(msgs);
+    });
+
+    return () => { unsubProf(); unsubStories(); unsubAllProfiles(); unsubFriends(); unsubComments(); unsubMessages(); };
   }, [user]);
+
+  // Handle New Message Notifications & Auto-Scroll
+  useEffect(() => {
+    if (messages.length > prevMessagesLength.current && prevMessagesLength.current !== 0) {
+      const newMsg = messages[messages.length - 1];
+      // If we received a message and we aren't currently chatting with them
+      if (newMsg.receiverId === user?.uid && activeChatUser?.id !== newMsg.senderId) {
+        notify(`💬 New message from ${newMsg.senderName}!`);
+      }
+      // Auto Scroll to bottom
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMessagesLength.current = messages.length;
+  }, [messages, activeChatUser, user, notify]);
+
+  // Scroll to bottom when opening a chat
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeChatUser]);
 
   // --- Camera Engine ---
   const startCamera = useCallback(async () => {
-    setCameraError(null);
-    setIsDemoMode(false);
+    setCameraError(null); setIsDemoMode(false);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: false });
       setStream(mediaStream);
       if (videoRef.current) videoRef.current.srcObject = mediaStream;
     } catch (err) {
-      try {
-        const basicStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        setStream(basicStream);
-        if (videoRef.current) videoRef.current.srcObject = basicStream;
-      } catch (fallbackErr) { setCameraError('No webcam detected. Click the Star icon to run Demo mode!'); }
+      setCameraError('No webcam detected. Click the Star icon to run Demo mode!');
     }
   }, []);
 
@@ -241,11 +276,6 @@ export default function App() {
       angle += 0.02;
       ctx.fillStyle = `rgb(15, 23, 42)`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.lineWidth = 1.5;
-      const offset = (angle * 45) % 60;
-      for (let x = offset; x < canvas.width; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
-      for (let y = offset; y < canvas.height; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
       ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
       ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(canvas.width / 2, canvas.height / 2, 110, 0, Math.PI * 2); ctx.stroke();
       emojiX += dx; emojiY += dy;
@@ -280,16 +310,16 @@ export default function App() {
       ctx.filter = activeFilter.value; ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     } else return;
 
-    // Strict compression: keep image small so it fits in Firestore's 1MB limit easily
-    const max_dim = 500; let w = canvas.width; let h = canvas.height;
-    if (w > max_dim || h > max_dim) { const scale = Math.min(max_dim / w, max_dim / h); w = Math.round(w * scale); h = Math.round(h * scale); }
+    // HIGH QUALITY COMPRESSION FIX (1080px max, 85% quality)
+    const max_dim = 1080; let w = canvas.width; let h = canvas.height;
+    if (w > max_dim || h > max_dim) { const scale = Math.min(max_dim / w, max_dim / h); w = Math.round(w * scale); h = Math.round(w * scale); }
     const compCanvas = document.createElement('canvas'); compCanvas.width = w; compCanvas.height = h;
     compCanvas.getContext('2d').drawImage(canvas, 0, 0, w, h);
     setIsFlashing(true); setTimeout(() => setIsFlashing(false), 150);
-    setCapturedPhoto(compCanvas.toDataURL('image/jpeg', 0.5));
+    setCapturedPhoto(compCanvas.toDataURL('image/jpeg', 0.85));
   };
 
-  // --- Sticker Engine (AR Stamps) ---
+  // --- Sticker Engine ---
   const applyStickerToPhoto = (emoji) => {
     if (!capturedPhoto) return;
     const canvas = document.createElement('canvas');
@@ -304,7 +334,7 @@ export default function App() {
       const ry = canvas.height/2 + (Math.random() * canvas.height * 0.5 - canvas.height * 0.25);
       const rot = (Math.random() - 0.5) * 0.8;
       ctx.translate(rx, ry); ctx.rotate(rot); ctx.fillText(emoji, 0, 0);
-      setCapturedPhoto(canvas.toDataURL('image/jpeg', 0.6));
+      setCapturedPhoto(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.src = capturedPhoto;
   };
@@ -316,11 +346,11 @@ export default function App() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const max_dim = 600; let w = img.width; let h = img.height;
+        const max_dim = 1080; let w = img.width; let h = img.height;
         if (w > max_dim || h > max_dim) { const scale = Math.min(max_dim / w, max_dim / h); w = Math.round(w * scale); h = Math.round(h * scale); }
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        setUploadFile(canvas.toDataURL('image/jpeg', 0.5));
+        setUploadFile(canvas.toDataURL('image/jpeg', 0.85));
       };
       img.src = event.target.result;
     };
@@ -328,15 +358,7 @@ export default function App() {
   };
 
   const handleCreatePost = async () => {
-    if (!user) {
-      alert("Authentication error: Still connecting to server. Please try again in a few seconds.");
-      return;
-    }
-    if (!profile) {
-      alert("Profile error: Your temporary user profile hasn't loaded yet. Please wait a second.");
-      return;
-    }
-    
+    if (!user || !profile) return;
     setIsPosting(true);
     let finalImageUrl = null; let textContent = null; let bgGradient = null; let isGif = false;
 
@@ -344,11 +366,7 @@ export default function App() {
     else if (creationType === 'upload' && uploadFile) finalImageUrl = uploadFile;
     else if (creationType === 'gif' && selectedGif) { finalImageUrl = selectedGif; isGif = true; }
     else if (creationType === 'text' && textPostContent.trim() !== '') { textContent = textPostContent; bgGradient = textPostGradient; }
-    else { 
-      alert("Please add a photo, text, or GIF before publishing!");
-      setIsPosting(false); 
-      return; 
-    }
+    else { setIsPosting(false); return; }
 
     const payload = {
       authorId: user.uid, authorName: profile.username, authorEmoji: profile.emoji,
@@ -358,15 +376,9 @@ export default function App() {
 
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), payload);
-
       setCapturedPhoto(null); setUploadFile(null); setSelectedGif(null); setTextPostContent(''); setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]);
       setCurrentTab('feed');
-    } catch (err) { 
-      console.error("Posting error:", err); 
-      alert(`Firebase rejected the post: ${err.message}. Make sure your Firestore Rules are set to Test Mode!`);
-    } finally { 
-      setIsPosting(false); 
-    }
+    } catch (err) { console.error("Posting error:", err); alert("Error publishing to database."); } finally { setIsPosting(false); }
   };
 
   const handlePostComment = async () => {
@@ -374,8 +386,7 @@ export default function App() {
     const payload = { storyId: activeCommentPost.id, authorId: user.uid, authorName: profile.username, authorEmoji: profile.emoji, text: newCommentText.trim(), createdAt: Date.now() };
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'comments'), payload);
-      
-      if (activeCommentPost.authorId !== user.uid) notify(`You commented on ${activeCommentPost.authorName}'s post!`);
+      if (activeCommentPost.authorId !== user.uid) notify(`💬 You commented on ${activeCommentPost.authorName}'s post!`);
       setNewCommentText('');
     } catch (err) { console.error(err); }
   };
@@ -389,26 +400,51 @@ export default function App() {
     } catch (err) { console.error(err); }
   };
 
-  const toggleLike = async (story) => {
+  // Trigger Particle System and Like
+  const toggleLike = async (story, e) => {
     if (!user) return;
+    
+    // Trigger Vibe Engine Particles
+    if (e && e.clientX) {
+      const rect = e.target.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const newParticles = Array.from({length: 8}).map((_, i) => ({
+         id: Date.now() + i, x, y,
+         vx: (Math.random() - 0.5) * 80,
+         vy: -(Math.random() * 80 + 40)
+      }));
+      setParticles(prev => [...prev, ...newParticles]);
+      setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
+    }
+
     const hasLiked = story.likes?.includes(user.uid);
     const newLikes = hasLiked ? (story.likes || []).filter(id => id !== user.uid) : [...(story.likes || []), user.uid];
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', story.id), { likes: newLikes });
-      
-      if (!hasLiked && story.authorId !== user.uid) notify(`You liked ${story.authorName}'s post! 💖`);
+      if (!hasLiked && story.authorId !== user.uid) notify(`💖 You liked ${story.authorName}'s post!`);
     } catch (err) { console.error(err); }
+  };
+
+  // Music Player Toggle
+  const toggleAudio = (post) => {
+    if (!AUDIO_MAP[post.soundtrack]) return;
+    
+    if (currentAudio.postId === post.id) {
+      audioRef.current?.pause();
+      setCurrentAudio({ url: null, postId: null });
+    } else {
+      setCurrentAudio({ url: AUDIO_MAP[post.soundtrack], postId: post.id });
+      setTimeout(() => audioRef.current?.play(), 50);
+    }
   };
 
   const toggleFriend = async (targetId) => {
     if (!user || targetId === user.uid) return;
     try {
       const friendRef = doc(db, 'artifacts', appId, 'users', user.uid, 'friends', targetId);
-      if (friends.includes(targetId)) {
-        await deleteDoc(friendRef); 
-      } else {
-        await setDoc(friendRef, { addedAt: Date.now() });
-      }
+      if (friends.includes(targetId)) await deleteDoc(friendRef); 
+      else await setDoc(friendRef, { addedAt: Date.now() });
     } catch (err) { console.error(err); }
   };
 
@@ -417,15 +453,12 @@ export default function App() {
     setIsUpdatingProfile(true);
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { username: editName.trim(), emoji: editEmoji, bio: editBio.trim() });
-      alert("Profile updated! Looking good!");
     } catch (err) { console.error(err); } finally { setIsUpdatingProfile(false); }
   };
 
   const deleteStory = async (storyId) => {
     if (!user) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId));
-    } catch (err) { console.error(err); }
+    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId)); } catch (err) { console.error(err); }
   };
 
   const filteredStories = stories.filter(story => {
@@ -454,6 +487,10 @@ export default function App() {
   return (
     <div className="h-screen bg-neutral-950 text-white font-sans flex flex-col md:flex-row overflow-hidden relative selection:bg-blue-500/30">
       
+      {/* Global Audio Player & Particle Engine */}
+      <audio ref={audioRef} src={currentAudio.url} onEnded={() => setCurrentAudio({ url: null, postId: null })} loop />
+      <ParticleBurst particles={particles} />
+
       {/* ===== SIDEBAR NAVIGATION ===== */}
       <nav className="hidden md:flex flex-col w-64 bg-neutral-900 border-r border-neutral-800 p-4 shrink-0 z-20">
         <div className="flex items-center gap-2 mb-8 px-2 mt-2">
@@ -477,20 +514,16 @@ export default function App() {
           <button onClick={() => setCurrentTab('feed')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'feed' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <Home className="w-5 h-5" /> Home Feed
           </button>
-          
           <button onClick={() => setCurrentTab('explore')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'explore' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <Compass className="w-5 h-5" /> Explore Grid
           </button>
-
           <button onClick={() => setCurrentTab('create')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'create' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <PlusCircle className="w-5 h-5" /> Post Studio
           </button>
-
           <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'inbox' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <div className="flex items-center gap-3"><Bell className="w-5 h-5" /> Inbox Hub</div>
             {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse">{unreadCount}</span>}
           </button>
-
           <button onClick={() => setCurrentTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'profile' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <User className="w-5 h-5" /> Profile Settings
           </button>
@@ -542,9 +575,10 @@ export default function App() {
                   const hasLiked = story.likes?.includes(user?.uid);
                   const postComments = comments.filter(c => c.storyId === story.id);
                   const profileData = allProfiles.find(p => p.id === story.authorId) || {};
+                  const isPlaying = currentAudio.postId === story.id;
                   
                   return (
-                    <article key={story.id} className="bg-neutral-900 border border-neutral-800/80 rounded-3xl overflow-hidden shadow-2xl">
+                    <article key={story.id} className={`bg-neutral-900 border ${isPlaying ? 'border-blue-500 shadow-xl shadow-blue-500/20' : 'border-neutral-800/80'} rounded-3xl overflow-hidden transition-all duration-300`}>
                       <div className="p-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <span className="text-2xl bg-neutral-950 p-1.5 rounded-full border border-neutral-800">{story.authorEmoji}</span>
@@ -556,11 +590,6 @@ export default function App() {
                             </div>
                             <div className="text-[10px] text-neutral-500 flex items-center gap-2">
                               {timeAgo(story.createdAt)}
-                              {story.soundtrack && story.soundtrack !== 'None' && (
-                                <span className="flex items-center gap-1 text-blue-400">
-                                  <Music className="w-3 h-3" /> {story.soundtrack}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -583,17 +612,33 @@ export default function App() {
                             <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl">{story.textContent}</p>
                           </div>
                         )}
-                        {/* Spinning Record overlay for music */}
-                        {story.soundtrack && story.soundtrack !== 'None' && (
-                          <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md p-1.5 rounded-full border border-white/10">
-                            <Disc className="w-6 h-6 text-white animate-[spin_4s_linear_infinite]" />
-                          </div>
+                        
+                        {/* VIBE ENGINE: Interactive Music Player Overlay */}
+                        {story.soundtrack && story.soundtrack !== 'None' && AUDIO_MAP[story.soundtrack] && (
+                          <button 
+                            onClick={() => toggleAudio(story)}
+                            className={`absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-full border transition-all ${isPlaying ? 'border-blue-400 scale-110 shadow-[0_0_15px_rgba(59,130,246,0.6)]' : 'border-white/20 hover:scale-105'}`}
+                          >
+                            <div className="relative flex items-center justify-center w-8 h-8">
+                              <Disc className={`absolute inset-0 w-full h-full text-white ${isPlaying ? 'animate-[spin_2s_linear_infinite]' : ''}`} />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full">
+                                {isPlaying ? <Pause className="w-4 h-4 text-white" /> : <Play className="w-4 h-4 text-white ml-0.5" />}
+                              </div>
+                            </div>
+                          </button>
                         )}
                       </div>
 
                       <div className="p-4 bg-neutral-900">
-                        <div className="flex gap-5 mb-3">
-                          <button onClick={() => toggleLike(story)} className={`flex items-center gap-1.5 text-sm font-bold transition-transform hover:scale-110 ${hasLiked ? 'text-pink-500' : 'text-neutral-300'}`}>
+                        {story.soundtrack && story.soundtrack !== 'None' && (
+                          <div className={`flex items-center gap-2 mb-3 text-xs font-bold ${isPlaying ? 'text-blue-400' : 'text-neutral-400'}`}>
+                            <Music className="w-3.5 h-3.5" /> 
+                            {isPlaying ? <span className="animate-pulse">Now Playing: {story.soundtrack}</span> : <span>{story.soundtrack}</span>}
+                          </div>
+                        )}
+
+                        <div className="flex gap-5 mb-3 relative">
+                          <button onClick={(e) => toggleLike(story, e)} className={`flex items-center gap-1.5 text-sm font-bold transition-transform hover:scale-110 ${hasLiked ? 'text-pink-500' : 'text-neutral-300'}`}>
                             <Heart className={`w-6 h-6 ${hasLiked ? 'fill-pink-500' : ''}`} /> {story.likes?.length || 0}
                           </button>
                           <button onClick={() => setActiveCommentPost(story)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-white transition-transform hover:scale-110">
@@ -851,6 +896,8 @@ export default function App() {
                               )
                             })
                           )}
+                          {/* Invisible anchor to trigger auto-scroll to the bottom of the chat */}
+                          <div ref={chatEndRef} />
                         </div>
                         <div className="p-3 border-t border-neutral-800 bg-neutral-950/60 flex gap-2">
                           <input type="text" placeholder={`Message...`} value={newMessageText} onChange={(e) => setNewMessageText(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter') handleSendDM(); }} className="flex-1 bg-neutral-900 border border-neutral-800 rounded-full px-4 py-2 text-xs focus:outline-none focus:border-blue-500 text-white" />
@@ -990,6 +1037,14 @@ export default function App() {
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0.5rem); }
+        
+        @keyframes float-up {
+          0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
+          100% { transform: translate(var(--tx), var(--ty)) scale(1.5); opacity: 0; }
+        }
+        .animate-float-up {
+          animation: float-up 1s ease-out forwards;
+        }
       `}} />
     </div>
   );
