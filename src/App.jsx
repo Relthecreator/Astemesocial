@@ -4,13 +4,13 @@ import {
   UserPlus, Users, Home, Send, X, UserCheck, Globe, MessageCircle, MessageSquare, 
   User, Search, PlusCircle, ImageIcon, Type, TrendingUp, Hash, Check,
   Bell, Compass, Disc, BadgeCheck, Palette, Music, Play, Pause, Wand2, Flame,
-  Bookmark, Share
+  Bookmark, Share, Video, BarChart2, PieChart, Award, Lock, Mail, AtSign, Key, LogOut, Crown
 } from 'lucide-react';
 
 // --- Firebase Initialization ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 
 // ==========================================
 // 1. Live Production Firebase Config
@@ -40,13 +40,12 @@ const FILTERS = [
   { name: 'Vibrant', value: 'saturate(200%) hue-rotate(45deg) contrast(120%)' },
 ];
 
-const EMOJIS = ['😎', '👻', '👾', '🦊', '🚀', '🌟', '🦄', '🦖', '🍕', '🎸', '🐱', '🍩', '🔮', '👽', '🔥', '💖'];
+const EMOJIS = ['😎', '👻', '👾', '🦊', '🚀', '🌟', '🦄', '🦖', '🍕', '🎸', '🐱', '🍩', '🔮', '👽', '🔥', '💖', '👑', '💎'];
 
 const SOUNDTRACKS = [
   'None', 'Lofi Chill ☕️', 'Synthwave 🌃', 'Pop Anthem 🎤', 'Acoustic Vibes 🎸', 'Trap Beat 🎧', 'Cyberpunk 🦾'
 ];
 
-// Swapped to reliable, hotlink-friendly testing audio tracks
 const AUDIO_MAP = {
   'Lofi Chill ☕️': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
   'Synthwave 🌃': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
@@ -58,7 +57,8 @@ const AUDIO_MAP = {
 
 const GRADIENTS = [
   'from-pink-500 to-rose-500', 'from-purple-600 to-indigo-600', 'from-cyan-500 to-blue-500',
-  'from-amber-400 to-orange-500', 'from-emerald-400 to-teal-600', 'from-violet-600 to-fuchsia-600'
+  'from-amber-400 to-orange-500', 'from-emerald-400 to-teal-600', 'from-violet-600 to-fuchsia-600',
+  'from-yellow-400 to-amber-600' // VIP Gold
 ];
 
 const CURATED_GIFS = [
@@ -86,6 +86,9 @@ const timeAgo = (timestamp) => {
   return `${Math.floor(hours / 24)}d ago`;
 };
 
+// --- VIP Check ---
+const isVIP = (username) => username?.toLowerCase() === 'relthecreator';
+
 // --- Sub-components ---
 const ParticleBurst = ({ particles }) => (
   <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
@@ -106,19 +109,27 @@ export default function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [profile, setProfile] = useState(null);
   
+  // Auth Form States
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
   // --- Navigation & View State ---
-  const [currentTab, setCurrentTab] = useState('feed'); 
+  const [currentTab, setCurrentTab] = useState('feed'); // feed | shorts | explore | create | inbox | profile
   const [inboxSubTab, setInboxSubTab] = useState('activity'); 
-  const [profileSubTab, setProfileSubTab] = useState('posts'); 
+  const [profileSubTab, setProfileSubTab] = useState('posts'); // posts | saved | analytics
   const [feedFilter, setFeedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeStoryView, setActiveStoryView] = useState(null); // For full-screen 24h stories
+  const [activeStoryView, setActiveStoryView] = useState(null); 
   
   // --- Data Feeds ---
-  const [stories, setStories] = useState([]);      // Main Feed Posts
-  const [fleets, setFleets] = useState([]);        // 24 Hour Stories
+  const [stories, setStories] = useState([]);      
+  const [fleets, setFleets] = useState([]);        
   const [friends, setFriends] = useState([]);
-  const [bookmarks, setBookmarks] = useState([]);  // User's saved posts
+  const [bookmarks, setBookmarks] = useState([]);  
   const [comments, setComments] = useState([]);
   const [messages, setMessages] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -126,9 +137,10 @@ export default function App() {
 
   // --- Creator States ---
   const [creationType, setCreationType] = useState('camera'); 
-  const [isPostingToStories, setIsPostingToStories] = useState(false); // Toggle for 24h story
+  const [isPostingToStories, setIsPostingToStories] = useState(false); 
   const [textPostContent, setTextPostContent] = useState('');
   const [textPostGradient, setTextPostGradient] = useState(GRADIENTS[0]);
+  const [pollOptions, setPollOptions] = useState(['', '']); 
   const [uploadFile, setUploadFile] = useState(null);
   const [selectedGif, setSelectedGif] = useState(null);
   const [customCaption, setCustomCaption] = useState('');
@@ -156,7 +168,6 @@ export default function App() {
   const audioRef = useRef(null);
 
   // --- Settings & Chat ---
-  const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editEmoji, setEditEmoji] = useState('😎');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
@@ -176,20 +187,67 @@ export default function App() {
   }, []);
 
   const markNotifsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-
   const handleVideoCanPlay = () => setIsCameraReady(true);
 
-  // --- Firebase Auth ---
+  // --- Firebase Auth & Strict Registration ---
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (err) { console.error("Auth Error:", err); } 
-      finally { setIsAuthenticating(false); }
-    };
-    initAuth();
-    return onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthenticating(false);
+    });
+    return unsubscribe;
   }, []);
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsAuthLoading(true);
+
+    try {
+      if (isLoginMode) {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      } else {
+        if (!authUsername.trim() || authUsername.trim().length < 3) throw new Error("Username must be at least 3 characters.");
+        if (authUsername.includes(" ")) throw new Error("Username cannot contain spaces.");
+        
+        const lowerUser = authUsername.toLowerCase().trim();
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'usernames', lowerUser);
+        const userSnap = await getDoc(userRef);
+        
+        if (userSnap.exists()) {
+          throw new Error(`The handle @${authUsername} is already taken!`);
+        }
+
+        // Create Account
+        const cred = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        
+        // Lock in Username
+        await setDoc(userRef, { uid: cred.user.uid });
+        
+        // Setup Profile
+        const defaultProfile = { 
+          username: authUsername.trim(), 
+          emoji: '😎', 
+          bio: 'Ready to vibe!', 
+          createdAt: Date.now(), 
+          isVerified: true 
+        };
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', cred.user.uid), defaultProfile);
+      }
+    } catch (err) {
+      setAuthError(err.message.replace('Firebase: ', ''));
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setProfile(null);
+      setCurrentTab('feed');
+    } catch (err) { console.error(err); }
+  };
 
   // --- Global Data Syncer ---
   useEffect(() => {
@@ -199,18 +257,13 @@ export default function App() {
       if (snap.exists()) {
         const data = snap.data();
         setProfile(data);
-        setEditName(data.username || ''); setEditBio(data.bio || ''); setEditEmoji(data.emoji || '😎');
-      } else {
-        const defaultProfile = { username: `User_${Math.floor(Math.random() * 9000) + 1000}`, emoji: '😎', bio: 'Ready to post!', createdAt: Date.now(), isVerified: true };
-        setProfile(defaultProfile);
-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), defaultProfile);
+        setEditBio(data.bio || ''); setEditEmoji(data.emoji || '😎');
       }
     });
 
     const unsubStories = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), (snap) => setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt)));
     const unsubFleets = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'fleets'), (snap) => {
       const allFleets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Auto expire fleets older than 24 hours locally
       const validFleets = allFleets.filter(f => Date.now() - f.createdAt < 24 * 60 * 60 * 1000).sort((a,b) => b.createdAt - a.createdAt);
       setFleets(validFleets);
     });
@@ -233,9 +286,6 @@ export default function App() {
     }
     prevMessagesLength.current = messages.length;
   }, [messages, activeChatUser, user, notify]);
-
-  // Scroll to bottom when opening a chat
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeChatUser]);
 
   // --- Camera Engine ---
   const startCamera = useCallback(async () => {
@@ -308,7 +358,6 @@ export default function App() {
     setCapturedPhoto(compCanvas.toDataURL('image/jpeg', 0.85));
   };
 
-  // --- Sticker Engine ---
   const applyStickerToPhoto = (emoji) => {
     if (!capturedPhoto) return;
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
@@ -355,7 +404,12 @@ export default function App() {
     }
   };
 
-  // The Post Publisher (Supports regular posts & 24h Stories)
+  const handlePollChange = (idx, value) => {
+    const newOptions = [...pollOptions];
+    newOptions[idx] = value;
+    setPollOptions(newOptions);
+  };
+
   const handleCreatePost = async () => {
     if (!user || !profile) return;
     setIsPosting(true);
@@ -367,14 +421,16 @@ export default function App() {
     else if (creationType === 'text' && textPostContent.trim() !== '') { textContent = textPostContent; bgGradient = textPostGradient; }
     else { setIsPosting(false); return; }
 
+    const finalPollOptions = creationType === 'text' ? pollOptions.filter(o => o.trim() !== '') : [];
+
     const payload = {
       authorId: user.uid, authorName: profile.username, authorEmoji: profile.emoji,
       imageUrl: finalImageUrl, textContent: textContent, bgGradient: bgGradient,
-      caption: customCaption, soundtrack: selectedSoundtrack, isGif: isGif, createdAt: Date.now(), likes: []
+      caption: customCaption, soundtrack: selectedSoundtrack, isGif: isGif, createdAt: Date.now(), 
+      likes: [], pollOptions: finalPollOptions.length > 1 ? finalPollOptions : null, votes: {}, votedBy: []
     };
 
     try {
-      // Branch: Post to Fleets (24h) or Main Feed
       if (isPostingToStories) {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'fleets'), payload);
         notify("✨ Added to your 24h Story!");
@@ -382,13 +438,31 @@ export default function App() {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), payload);
         notify("🚀 Published to Global Feed!");
       }
-      setCapturedPhoto(null); setUploadFile(null); setSelectedGif(null); setTextPostContent(''); setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]); setIsPostingToStories(false);
+      setCapturedPhoto(null); setUploadFile(null); setSelectedGif(null); setTextPostContent(''); 
+      setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]); setIsPostingToStories(false);
+      setPollOptions(['', '']);
       setCurrentTab('feed');
     } catch (err) { console.error("Posting error:", err); alert("Error publishing to database."); } 
     finally { setIsPosting(false); }
   };
 
-  // Features: Comments, Likes, Bookmarks, and Friends
+  const handleVote = async (storyId, optionIdx) => {
+    if (!user) return;
+    const story = stories.find(s => s.id === storyId);
+    if (!story || story.votedBy?.includes(user.uid)) return; 
+    
+    const newVotes = { ...(story.votes || {}) };
+    newVotes[optionIdx] = (newVotes[optionIdx] || 0) + 1;
+    const newVotedBy = [...(story.votedBy || []), user.uid];
+
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId), {
+        votes: newVotes, votedBy: newVotedBy
+      });
+      notify("🗳️ Vote counted!");
+    } catch (err) { console.error(err); }
+  };
+
   const handlePostComment = async () => {
     if (!user || !profile || !newCommentText.trim() || !activeCommentPost) return;
     const payload = { storyId: activeCommentPost.id, authorId: user.uid, authorName: profile.username, authorEmoji: profile.emoji, text: newCommentText.trim(), createdAt: Date.now() };
@@ -411,7 +485,7 @@ export default function App() {
       const rect = e.target.getBoundingClientRect();
       const newParticles = Array.from({length: 8}).map((_, i) => ({
          id: Date.now() + i, x: rect.left + rect.width/2, y: rect.top + rect.height/2,
-         vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji: '💖'
+         vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji: isVIP(profile?.username) ? '💎' : '💖'
       }));
       setParticles(prev => [...prev, ...newParticles]);
       setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
@@ -465,9 +539,12 @@ export default function App() {
   };
 
   const handleUpdateProfile = async () => {
-    if (!user || !editName.trim()) return;
+    if (!user) return;
     setIsUpdatingProfile(true);
-    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { username: editName.trim(), emoji: editEmoji, bio: editBio.trim() }); } 
+    try { 
+      // Note: Username editing is locked on the UI now to ensure uniqueness integrity
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { emoji: editEmoji, bio: editBio.trim() }); 
+    } 
     catch (err) { console.error(err); } finally { setIsUpdatingProfile(false); notify("Profile Updated!"); }
   };
 
@@ -477,8 +554,6 @@ export default function App() {
     try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', colName, storyId)); notify("Deleted."); } catch (err) { console.error(err); }
   };
 
-  // --- Rendering Helpers ---
-  // Transforms #hashtags into clickable blue text
   const renderCaptionWithHashtags = (text) => {
     if (!text) return null;
     const parts = text.split(/(#\w+)/g);
@@ -502,7 +577,7 @@ export default function App() {
   const chatHistory = messages.filter(m => (m.senderId === user?.uid && m.receiverId === activeChatUser?.id) || (m.senderId === activeChatUser?.id && m.receiverId === user?.uid));
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Render Loader
+  // --- Auth Screen Render ---
   if (isAuthenticating) {
     return (
       <div className="h-screen bg-neutral-950 text-white flex items-center justify-center font-sans">
@@ -514,6 +589,74 @@ export default function App() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white font-sans flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Dynamic Animated Tech Header Backdrop */}
+        <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-blue-900/20 via-transparent to-transparent pointer-events-none z-0" />
+        
+        <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-2xl relative z-10">
+          <div className="text-center mb-8">
+            <div className="bg-blue-600 w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.4)] mb-4">
+              <Camera className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-black tracking-wider text-blue-400">ASTEME SOCIAL</h1>
+            <p className="text-xs font-bold text-neutral-500 mt-2 uppercase tracking-widest">Connect with the world</p>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            {!isLoginMode && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Unique Handle</label>
+                <div className="relative">
+                  <AtSign className="w-4 h-4 text-neutral-500 absolute left-3 top-3" />
+                  <input type="text" placeholder="username" value={authUsername} onChange={(e) => setAuthUsername(e.target.value.toLowerCase())} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors" />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Email Address</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-neutral-500 absolute left-3 top-3" />
+                <input type="email" placeholder="you@email.com" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Password</label>
+              <div className="relative">
+                <Key className="w-4 h-4 text-neutral-500 absolute left-3 top-3" />
+                <input type="password" placeholder="••••••••" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors" />
+              </div>
+            </div>
+
+            {authError && (
+              <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-xs font-bold p-3 rounded-xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>{authError}</p>
+              </div>
+            )}
+
+            <button type="submit" disabled={isAuthLoading} className="w-full py-3.5 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-110 text-sm font-bold text-white rounded-xl shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+              {isAuthLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (isLoginMode ? 'Sign In' : 'Create Account')}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <button onClick={() => { setIsLoginMode(!isLoginMode); setAuthError(''); }} className="text-xs font-bold text-neutral-400 hover:text-white transition-colors">
+              {isLoginMode ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Determine if Current User is VIP
+  const iAmVIP = isVIP(profile?.username);
+
+  // --- Main App Render ---
   return (
     <div className="h-screen bg-neutral-950 text-white font-sans flex flex-col md:flex-row overflow-hidden relative selection:bg-blue-500/30">
       
@@ -524,16 +667,17 @@ export default function App() {
       {/* ===== SIDEBAR NAVIGATION ===== */}
       <nav className="hidden md:flex flex-col w-64 bg-neutral-900 border-r border-neutral-800 p-4 shrink-0 z-20">
         <div className="flex items-center gap-2 mb-8 px-2 mt-2">
-          <Camera className="w-8 h-8 text-blue-500" />
-          <span className="font-black text-xl tracking-wider text-blue-400">ASTEME SOCIAL</span>
+          <Camera className={`w-8 h-8 ${iAmVIP ? 'text-yellow-400' : 'text-blue-500'}`} />
+          <span className={`font-black text-xl tracking-wider ${iAmVIP ? 'bg-gradient-to-r from-yellow-300 to-yellow-600 bg-clip-text text-transparent' : 'text-blue-400'}`}>ASTEME SOCIAL</span>
         </div>
 
         {profile && (
-          <div className="bg-neutral-950 border border-neutral-800 p-3 rounded-2xl flex items-center gap-3 mb-6 shadow-inner">
-            <span className="text-3xl bg-neutral-900 p-1.5 rounded-xl border border-neutral-800">{profile.emoji}</span>
+          <div className={`bg-neutral-950 border p-3 rounded-2xl flex items-center gap-3 mb-6 shadow-inner ${iAmVIP ? 'border-yellow-500/30 shadow-[0_0_15px_rgba(250,204,21,0.1)]' : 'border-neutral-800'}`}>
+            <span className={`text-3xl bg-neutral-900 p-1.5 rounded-xl border ${iAmVIP ? 'border-yellow-500/50' : 'border-neutral-800'}`}>{profile.emoji}</span>
             <div className="overflow-hidden">
               <h4 className="font-bold text-xs text-neutral-200 truncate flex items-center gap-1">
-                {profile.username} <BadgeCheck className="w-3.5 h-3.5 text-blue-500" />
+                {profile.username} 
+                {iAmVIP ? <Crown className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" /> : (profile.isVerified && <BadgeCheck className="w-3.5 h-3.5 text-blue-500" />)}
               </h4>
               <p className="text-[10px] text-neutral-500 truncate">{profile.bio || 'No bio yet.'}</p>
             </div>
@@ -541,21 +685,24 @@ export default function App() {
         )}
 
         <div className="space-y-1.5">
-          <button onClick={() => setCurrentTab('feed')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'feed' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+          <button onClick={() => setCurrentTab('feed')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'feed' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <Home className="w-5 h-5" /> Home Feed
           </button>
-          <button onClick={() => setCurrentTab('explore')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'explore' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+          <button onClick={() => setCurrentTab('shorts')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'shorts' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+            <Video className="w-5 h-5" /> Asteme Shorts <span className="ml-auto bg-red-500 text-[9px] px-1.5 py-0.5 rounded-full text-white">NEW</span>
+          </button>
+          <button onClick={() => setCurrentTab('explore')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'explore' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <Compass className="w-5 h-5" /> Explore Grid
           </button>
-          <button onClick={() => setCurrentTab('create')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'create' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+          <button onClick={() => setCurrentTab('create')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'create' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <PlusCircle className="w-5 h-5" /> Post Studio
           </button>
-          <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'inbox' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+          <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'inbox' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <div className="flex items-center gap-3"><Bell className="w-5 h-5" /> Inbox Hub</div>
             {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse">{unreadCount}</span>}
           </button>
-          <button onClick={() => setCurrentTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'profile' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
-            <User className="w-5 h-5" /> Profile & Saved
+          <button onClick={() => { setCurrentTab('profile'); setProfileSubTab('posts'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'profile' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+            <User className="w-5 h-5" /> Profile Center
           </button>
         </div>
       </nav>
@@ -564,16 +711,18 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden bg-black/95 relative">
         
         {/* Mobile Header */}
-        <div className="md:hidden flex justify-between items-center px-4 py-3 bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800 shrink-0 z-30 sticky top-0">
-          <div className="flex items-center gap-1.5">
-            <Camera className="w-6 h-6 text-blue-500" />
-            <span className="font-black text-sm tracking-widest text-blue-400">ASTEME SOCIAL</span>
+        {currentTab !== 'shorts' && (
+          <div className="md:hidden flex justify-between items-center px-4 py-3 bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800 shrink-0 z-30 sticky top-0">
+            <div className="flex items-center gap-1.5">
+              <Camera className={`w-6 h-6 ${iAmVIP ? 'text-yellow-400' : 'text-blue-500'}`} />
+              <span className={`font-black text-sm tracking-widest ${iAmVIP ? 'text-yellow-400' : 'text-blue-400'}`}>ASTEME SOCIAL</span>
+            </div>
+            <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className="relative text-neutral-300">
+              <Bell className="w-6 h-6" />
+              {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-3.5 h-3.5 rounded-full border-2 border-neutral-900"></span>}
+            </button>
           </div>
-          <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className="relative text-neutral-300">
-            <Bell className="w-6 h-6" />
-            {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-3.5 h-3.5 rounded-full border-2 border-neutral-900"></span>}
-          </button>
-        </div>
+        )}
 
         {/* Dynamic Tab Switchboard */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -590,17 +739,17 @@ export default function App() {
                   {searchQuery && <button onClick={()=>setSearchQuery('')} className="absolute right-2 top-2.5 text-neutral-500"><X className="w-4 h-4"/></button>}
                 </div>
                 <div className="flex bg-neutral-950 rounded-lg p-1 ml-2 border border-neutral-800">
-                  <button onClick={() => setFeedFilter('all')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${feedFilter === 'all' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500'}`}>Global</button>
-                  <button onClick={() => setFeedFilter('friends')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${feedFilter === 'friends' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500'}`}>Friends</button>
+                  <button onClick={() => setFeedFilter('all')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${feedFilter === 'all' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-sm' : 'bg-neutral-800 text-white shadow-sm') : 'text-neutral-500'}`}>Global</button>
+                  <button onClick={() => setFeedFilter('friends')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${feedFilter === 'friends' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-sm' : 'bg-neutral-800 text-white shadow-sm') : 'text-neutral-500'}`}>Friends</button>
                 </div>
               </div>
 
               {/* 24-HOUR STORIES (FLEETS) HORIZONTAL BAR */}
               <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide items-center">
                 <button onClick={() => { setCurrentTab('create'); setIsPostingToStories(true); }} className="flex flex-col items-center gap-1.5 min-w-[72px] shrink-0 group">
-                  <div className="w-16 h-16 rounded-full border-2 border-dashed border-neutral-600 bg-neutral-900 flex items-center justify-center group-hover:border-blue-500 group-hover:bg-neutral-800 transition-colors relative">
-                    <PlusCircle className="text-neutral-400 group-hover:text-blue-400 w-6 h-6"/>
-                    <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full w-5 h-5 flex items-center justify-center text-white font-bold text-[10px] shadow-sm border border-neutral-900">+</div>
+                  <div className={`w-16 h-16 rounded-full border-2 border-dashed bg-neutral-900 flex items-center justify-center transition-colors relative ${iAmVIP ? 'border-yellow-600/50 group-hover:border-yellow-400' : 'border-neutral-600 group-hover:border-blue-500 group-hover:bg-neutral-800'}`}>
+                    <PlusCircle className={`w-6 h-6 ${iAmVIP ? 'text-yellow-500' : 'text-neutral-400 group-hover:text-blue-400'}`}/>
+                    <div className={`absolute -bottom-1 -right-1 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px] shadow-sm border border-neutral-900 ${iAmVIP ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white'}`}>+</div>
                   </div>
                   <span className="text-[10px] font-bold text-neutral-400">Add Story</span>
                 </button>
@@ -611,14 +760,18 @@ export default function App() {
                   const latest = userFleets[0];
                   if (!latest) return null;
                   const isMine = authorId === user?.uid;
+                  const authorIsVIP = isVIP(latest.authorName);
+                  
                   return (
                     <button key={authorId} onClick={() => setActiveStoryView(userFleets)} className="flex flex-col items-center gap-1.5 min-w-[72px] shrink-0 group">
-                      <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-pink-500 via-purple-500 to-blue-500 group-hover:scale-105 transition-transform">
+                      <div className={`w-16 h-16 rounded-full p-[2px] group-hover:scale-105 transition-transform ${authorIsVIP ? 'bg-gradient-to-tr from-yellow-300 via-amber-500 to-yellow-600 animate-pulse shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'bg-gradient-to-tr from-pink-500 via-purple-500 to-blue-500'}`}>
                         <div className="w-full h-full rounded-full bg-neutral-950 flex items-center justify-center text-3xl overflow-hidden border-2 border-neutral-900">
                           {latest.imageUrl ? <img src={latest.imageUrl} className="w-full h-full object-cover"/> : latest.authorEmoji}
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-neutral-200 truncate w-16 text-center">{isMine ? 'You' : latest.authorName}</span>
+                      <span className={`text-[10px] font-bold truncate w-16 text-center ${authorIsVIP ? 'text-yellow-400' : 'text-neutral-200'}`}>
+                        {isMine ? 'You' : latest.authorName} {authorIsVIP && '👑'}
+                      </span>
                     </button>
                   );
                 })}
@@ -640,16 +793,19 @@ export default function App() {
                   const profileData = allProfiles.find(p => p.id === story.authorId) || {};
                   const isPlaying = currentAudio.postId === story.id;
                   const isTrending = story.likes?.length >= 3;
+                  const authorIsVIP = isVIP(story.authorName);
                   
                   return (
-                    <article key={story.id} className={`bg-neutral-900 border ${isPlaying ? 'border-blue-500 shadow-xl shadow-blue-500/20' : 'border-neutral-800/80'} rounded-3xl overflow-hidden transition-all duration-300`}>
+                    <article key={story.id} className={`bg-neutral-900 border rounded-3xl overflow-hidden transition-all duration-300 ${isPlaying ? 'border-blue-500 shadow-xl shadow-blue-500/20' : 'border-neutral-800/80'} ${authorIsVIP ? 'shadow-[0_0_20px_rgba(250,204,21,0.1)] border-yellow-900/30' : ''}`}>
                       <div className="p-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl bg-neutral-950 p-1.5 rounded-full border border-neutral-800">{story.authorEmoji}</span>
+                          <div className={`w-10 h-10 rounded-full border flex items-center justify-center text-xl shadow-lg ${authorIsVIP ? 'bg-gradient-to-tr from-yellow-300 via-amber-500 to-yellow-600 animate-pulse border-yellow-200' : 'bg-neutral-950 border-neutral-800'}`}>
+                            {story.authorEmoji}
+                          </div>
                           <div>
                             <div className="font-bold text-sm flex items-center gap-1.5 text-neutral-100">
                               {story.authorName} 
-                              {profileData.isVerified && <BadgeCheck className="w-4 h-4 text-blue-500" />}
+                              {authorIsVIP ? <Crown className="w-4 h-4 text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]" /> : (profileData.isVerified && <BadgeCheck className="w-4 h-4 text-blue-500" />)}
                               {isMine && <span className="text-[9px] bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-400 font-bold tracking-wide">YOU</span>}
                             </div>
                             <div className="text-[10px] text-neutral-500 flex items-center gap-2 mt-0.5">
@@ -673,12 +829,35 @@ export default function App() {
                         {story.imageUrl ? (
                           <img src={story.imageUrl} alt="Uploaded Post" className="w-full h-full object-cover" />
                         ) : (
-                          <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-8 flex items-center justify-center text-center`}>
-                            <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl">{renderCaptionWithHashtags(story.textContent)}</p>
+                          <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-8 flex flex-col items-center justify-center text-center`}>
+                            <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl mb-4">{renderCaptionWithHashtags(story.textContent)}</p>
+                            
+                            {/* Poll Rendering */}
+                            {story.pollOptions && story.pollOptions.length > 0 && (
+                              <div className="w-full space-y-2 max-w-sm">
+                                {story.pollOptions.map((opt, idx) => {
+                                  const votesForOpt = story.votes?.[idx] || 0;
+                                  const totalVotes = story.votes ? Object.values(story.votes).reduce((a,b)=>a+b, 0) : 0;
+                                  const pct = totalVotes ? Math.round((votesForOpt/totalVotes)*100) : 0;
+                                  const hasVoted = story.votedBy?.includes(user?.uid);
+                                  
+                                  return (
+                                    <button key={idx} onClick={(e) => { e.stopPropagation(); handleVote(story.id, idx); }} disabled={hasVoted} className="w-full relative bg-black/40 border border-white/20 rounded-xl p-3 text-left overflow-hidden hover:border-blue-400 transition-colors group disabled:cursor-default">
+                                      <div className="absolute inset-y-0 left-0 bg-blue-500/40 transition-all duration-1000 ease-out" style={{width: `${hasVoted ? pct : 0}%`}} />
+                                      <div className="relative flex justify-between items-center text-white text-sm font-bold z-10">
+                                        <span>{opt}</span>
+                                        {hasVoted && <span>{pct}%</span>}
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+                                <p className="text-[10px] text-white/60 font-bold uppercase pt-2">{story.votedBy?.length || 0} Votes</p>
+                              </div>
+                            )}
                           </div>
                         )}
                         
-                        {/* VIBE ENGINE: Interactive Music Player Overlay */}
+                        {/* Audio Player Overlay */}
                         {story.soundtrack && story.soundtrack !== 'None' && AUDIO_MAP[story.soundtrack] && (
                           <button 
                             onClick={() => toggleAudio(story)}
@@ -715,7 +894,6 @@ export default function App() {
                             </button>
                           </div>
                           
-                          {/* Bookmark Button */}
                           <button onClick={() => toggleBookmark(story.id)} className={`transition-transform hover:scale-110 ${isBookmarked ? 'text-yellow-500' : 'text-neutral-400 hover:text-white'}`}>
                              <Bookmark className={`w-6 h-6 ${isBookmarked ? 'fill-yellow-500' : ''}`} />
                           </button>
@@ -734,10 +912,91 @@ export default function App() {
             </div>
           )}
 
+          {/* ================================================= */}
+          {/* TAB: ASTEME SHORTS (TIKTOK / REELS CLONE VIEW)    */}
+          {/* ================================================= */}
+          {currentTab === 'shorts' && (
+            <div className="h-full w-full max-w-md mx-auto snap-y snap-mandatory overflow-y-scroll scrollbar-hide pb-16 md:pb-0 bg-black">
+              {stories.filter(s => s.imageUrl).length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-neutral-500 space-y-4">
+                  <Video className="w-16 h-16 opacity-30" />
+                  <p className="font-bold">No Shorts Available</p>
+                </div>
+              ) : (
+                stories.filter(s => s.imageUrl).map((story, i) => {
+                  const hasLiked = story.likes?.includes(user?.uid);
+                  const isBookmarked = bookmarks.includes(story.id);
+                  const profileData = allProfiles.find(p => p.id === story.authorId) || {};
+                  const authorIsVIP = isVIP(story.authorName);
+                  
+                  return (
+                    <div key={`short-${story.id}`} className="h-full w-full snap-start relative flex items-center justify-center bg-neutral-950 border-b border-neutral-900">
+                      
+                      <img src={story.imageUrl} className="absolute inset-0 w-full h-full object-contain" />
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80 pointer-events-none" />
+                      
+                      <div className="absolute right-4 bottom-28 md:bottom-20 flex flex-col gap-6 items-center z-10">
+                        <button onClick={(e) => toggleLike(story, e)} className="flex flex-col items-center gap-1 group">
+                          <div className="bg-black/40 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform">
+                            <Heart className={`w-7 h-7 ${hasLiked ? 'fill-pink-500 text-pink-500' : 'text-white'}`} />
+                          </div>
+                          <span className="text-white text-xs font-bold drop-shadow-md">{story.likes?.length || 0}</span>
+                        </button>
+                        
+                        <button onClick={() => setActiveCommentPost(story)} className="flex flex-col items-center gap-1 group">
+                          <div className="bg-black/40 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform">
+                            <MessageCircle className="w-7 h-7 text-white" />
+                          </div>
+                          <span className="text-white text-xs font-bold drop-shadow-md">{comments.filter(c => c.storyId === story.id).length}</span>
+                        </button>
+
+                        <button onClick={() => toggleBookmark(story.id)} className="flex flex-col items-center gap-1 group">
+                          <div className="bg-black/40 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform">
+                            <Bookmark className={`w-7 h-7 ${isBookmarked ? 'fill-yellow-500 text-yellow-500' : 'text-white'}`} />
+                          </div>
+                          <span className="text-white text-xs font-bold drop-shadow-md">Save</span>
+                        </button>
+
+                        <button onClick={() => shareToClipboard(story.id)} className="flex flex-col items-center gap-1 group">
+                          <div className="bg-black/40 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform">
+                            <Share className="w-7 h-7 text-white" />
+                          </div>
+                          <span className="text-white text-xs font-bold drop-shadow-md">Share</span>
+                        </button>
+                      </div>
+
+                      <div className="absolute bottom-20 md:bottom-12 left-4 right-20 text-white z-10 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full border flex items-center justify-center text-xl shadow-lg ${authorIsVIP ? 'bg-gradient-to-tr from-yellow-300 via-amber-500 to-yellow-600 animate-pulse border-yellow-200' : 'bg-neutral-900 border-white/20'}`}>
+                            {story.authorEmoji}
+                          </div>
+                          <h3 className={`font-bold text-base flex items-center gap-1.5 drop-shadow-lg ${authorIsVIP ? 'text-yellow-400' : 'text-white'}`}>
+                            @{story.authorName} {authorIsVIP ? <Crown className="w-4 h-4 text-yellow-400 fill-yellow-400" /> : (profileData.isVerified && <BadgeCheck className="w-4 h-4 text-blue-400" />)}
+                          </h3>
+                        </div>
+                        {story.caption && (
+                          <p className="text-sm font-medium drop-shadow-lg leading-snug line-clamp-2">
+                            {renderCaptionWithHashtags(story.caption)}
+                          </p>
+                        )}
+                        {story.soundtrack && story.soundtrack !== 'None' && (
+                          <button onClick={() => toggleAudio(story)} className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold w-max border border-white/10 hover:bg-black/60 transition-colors">
+                            <Music className="w-3.5 h-3.5" /> 
+                            <span className="marquee-text max-w-[150px] truncate">{story.soundtrack}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )}
+
           {/* TAB 2: EXPLORE (GRID) */}
           {currentTab === 'explore' && (
             <div className="p-2 md:p-6 pb-24 md:pb-6">
-              <h2 className="text-xl font-extrabold tracking-wide text-blue-400 mb-4 px-2">EXPLORE WORLD</h2>
+              <h2 className={`text-xl font-extrabold tracking-wide mb-4 px-2 ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>EXPLORE WORLD</h2>
               <div className="grid grid-cols-3 gap-1 md:gap-3">
                 {stories.filter(s => s.imageUrl).length === 0 ? (
                   <div className="col-span-3 text-center py-20 text-neutral-500 text-sm">No visual posts to explore yet!</div>
@@ -760,9 +1019,8 @@ export default function App() {
           {currentTab === 'create' && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
               <div className="flex justify-between items-center">
-                <h2 className="text-xl font-extrabold tracking-wide text-blue-400">CREATIVE STUDIO</h2>
+                <h2 className={`text-xl font-extrabold tracking-wide ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>CREATIVE STUDIO</h2>
                 
-                {/* 24 Hour Story Toggle */}
                 <button 
                   onClick={() => setIsPostingToStories(!isPostingToStories)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all ${isPostingToStories ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-neutral-700 bg-neutral-800 text-neutral-400'}`}
@@ -772,10 +1030,10 @@ export default function App() {
               </div>
               
               <div className="grid grid-cols-4 gap-1.5 bg-neutral-900 p-1.5 rounded-xl border border-neutral-800">
-                <button onClick={() => setCreationType('camera')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'camera' ? 'bg-blue-500 text-white' : 'text-neutral-400'}`}>Camera</button>
-                <button onClick={() => setCreationType('text')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'text' ? 'bg-blue-500 text-white' : 'text-neutral-400'}`}>Text Card</button>
-                <button onClick={() => setCreationType('upload')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'upload' ? 'bg-blue-500 text-white' : 'text-neutral-400'}`}>Upload</button>
-                <button onClick={() => setCreationType('gif')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'gif' ? 'bg-blue-500 text-white' : 'text-neutral-400'}`}>GIFs</button>
+                <button onClick={() => setCreationType('camera')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'camera' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Camera</button>
+                <button onClick={() => {setCreationType('text'); setPollOptions(['', ''])}} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'text' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Text & Polls</button>
+                <button onClick={() => setCreationType('upload')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'upload' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Upload</button>
+                <button onClick={() => setCreationType('gif')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'gif' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>GIFs</button>
               </div>
 
               {creationType === 'camera' && (
@@ -836,8 +1094,18 @@ export default function App() {
 
               {creationType === 'text' && (
                 <div className="space-y-4">
-                  <div className={`aspect-[4/5] rounded-3xl bg-gradient-to-br ${textPostGradient} p-8 flex items-center justify-center relative border border-neutral-800 shadow-2xl`}>
-                    <textarea placeholder="Type something bold..." value={textPostContent} onChange={(e) => setTextPostContent(e.target.value)} maxLength={180} className="w-full bg-transparent border-none text-center font-black text-2xl md:text-4xl text-white placeholder-white/50 focus:outline-none resize-none overflow-hidden drop-shadow-xl" />
+                  <div className={`aspect-[4/5] rounded-3xl bg-gradient-to-br ${textPostGradient} p-8 flex flex-col items-center justify-center relative border border-neutral-800 shadow-2xl`}>
+                    <textarea placeholder="Type something bold..." value={textPostContent} onChange={(e) => setTextPostContent(e.target.value)} maxLength={180} className="w-full bg-transparent border-none text-center font-black text-2xl md:text-4xl text-white placeholder-white/50 focus:outline-none resize-none overflow-hidden drop-shadow-xl mb-6" />
+                    
+                    {/* Poll Setup */}
+                    <div className="w-full space-y-2">
+                      {pollOptions.map((opt, idx) => (
+                        <div key={idx} className="flex gap-2 items-center">
+                          <PieChart className="w-4 h-4 text-white/50" />
+                          <input type="text" placeholder={`Poll Option ${idx + 1}`} value={opt} onChange={(e) => handlePollChange(idx, e.target.value)} className="w-full bg-black/30 border border-white/20 rounded-xl px-4 py-2 text-sm text-white placeholder-white/50 focus:outline-none focus:border-white/50 transition-colors" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex gap-2 justify-center p-2 bg-neutral-900 rounded-2xl border border-neutral-800">
                     {GRADIENTS.map(grad => <button key={grad} onClick={() => setTextPostGradient(grad)} className={`w-8 h-8 rounded-full bg-gradient-to-br ${grad} border-2 ${textPostGradient === grad ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`} />)}
@@ -898,7 +1166,7 @@ export default function App() {
                 </div>
               </div>
 
-              <button onClick={handleCreatePost} disabled={isPosting || (creationType==='camera'&&!capturedPhoto) || (creationType==='upload'&&!uploadFile) || (creationType==='gif'&&!selectedGif) || (creationType==='text'&&!textPostContent)} className={`w-full py-4 text-sm font-bold text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 transition-all ${isPostingToStories ? 'bg-gradient-to-r from-purple-600 to-pink-600 shadow-purple-500/20' : 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/20 hover:brightness-110'}`}>
+              <button onClick={handleCreatePost} disabled={isPosting || (creationType==='camera'&&!capturedPhoto) || (creationType==='upload'&&!uploadFile) || (creationType==='gif'&&!selectedGif) || (creationType==='text'&&!textPostContent)} className={`w-full py-4 text-sm font-bold text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 transition-all ${isPostingToStories ? 'bg-gradient-to-r from-purple-600 to-pink-600 shadow-purple-500/20' : (iAmVIP ? 'bg-gradient-to-r from-yellow-500 to-yellow-700 shadow-yellow-600/20 hover:brightness-110 text-black' : 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/20 hover:brightness-110')}`}>
                 {isPosting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5" />} Publish to {isPostingToStories ? '24h Story' : 'World'}
               </button>
             </div>
@@ -907,7 +1175,7 @@ export default function App() {
           {/* TAB 4: COMBINED INBOX & NOTIFICATIONS */}
           {currentTab === 'inbox' && (
             <div className="max-w-4xl mx-auto p-4 flex flex-col h-[80vh] md:h-[90vh]">
-              <h2 className="text-xl font-extrabold tracking-wide text-blue-400 mb-4 hidden md:block">INBOX HUB</h2>
+              <h2 className={`text-xl font-extrabold tracking-wide mb-4 hidden md:block ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>INBOX HUB</h2>
               
               {/* Inbox Nav Toggle */}
               <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1.5 mb-4">
@@ -951,7 +1219,7 @@ export default function App() {
                         allProfiles.filter(p => friends.includes(p.id)).map(friend => (
                           <button key={friend.id} onClick={() => setActiveChatUser(friend)} className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${activeChatUser?.id === friend.id ? 'bg-blue-500/15 border border-blue-500/30' : 'hover:bg-neutral-800/60 border border-transparent'}`}>
                             <span className="text-2xl bg-neutral-950 p-1 rounded-lg">{friend.emoji}</span>
-                            <span className="text-xs font-bold truncate text-neutral-200">{friend.username}</span>
+                            <span className="text-xs font-bold truncate text-neutral-200">{friend.username} {isVIP(friend.username) && '👑'}</span>
                           </button>
                         ))
                       )}
@@ -1006,23 +1274,28 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 5: PROFILE & SAVED POSTS */}
+          {/* TAB 5: PROFILE, SAVED POSTS, AND ANALYTICS */}
           {currentTab === 'profile' && profile && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
-              <h2 className="text-xl font-extrabold tracking-wide text-blue-400">YOUR ACCOUNT</h2>
+              <h2 className={`text-xl font-extrabold tracking-wide ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>YOUR ACCOUNT</h2>
               
-              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-xl">
-                <div className="space-y-3 mb-6">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none"><Award className={`w-32 h-32 ${iAmVIP ? 'text-yellow-400' : 'text-blue-500'}`} /></div>
+                
+                <div className="space-y-3 mb-6 relative z-10">
                   <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Avatar Sticker</label>
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                     {EMOJIS.map(e => <button key={e} type="button" onClick={() => setEditEmoji(e)} className={`text-3xl p-2 rounded-2xl transition-all ${editEmoji === e ? 'bg-blue-500/20 border-2 border-blue-500 scale-105 shadow-md shadow-blue-500/20' : 'bg-neutral-950 border-2 border-transparent hover:bg-neutral-800'}`}>{e}</button>)}
                   </div>
                 </div>
 
-                <div className="space-y-5">
+                <div className="space-y-5 relative z-10">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Display Name</label>
-                    <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-white font-bold" />
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Display Name (Locked)</label>
+                    <div className="relative">
+                      <input type="text" value={profile.username} disabled className="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none text-neutral-500 font-bold cursor-not-allowed" />
+                      <Lock className="w-4 h-4 text-neutral-600 absolute right-4 top-3.5" />
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Public Bio</label>
@@ -1030,23 +1303,31 @@ export default function App() {
                   </div>
                 </div>
 
-                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="w-full mt-6 py-3.5 bg-white text-black text-xs font-black rounded-xl hover:bg-neutral-200 transition-all flex items-center justify-center gap-2 shadow-lg">
+                <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="w-full mt-6 py-3.5 bg-white text-black text-xs font-black rounded-xl hover:bg-neutral-200 transition-all flex items-center justify-center gap-2 shadow-lg relative z-10">
                   <Check className="w-4 h-4" /> Save Profile Details
+                </button>
+
+                <button onClick={handleLogout} className="w-full mt-4 py-3.5 bg-red-600/20 text-red-500 hover:bg-red-600/30 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 relative z-10">
+                  <LogOut className="w-4 h-4" /> Sign Out securely
                 </button>
               </div>
 
               {/* Profile Sub-tabs */}
               <div className="pt-4 space-y-4">
                 <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1.5">
-                  <button onClick={() => setProfileSubTab('posts')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${profileSubTab === 'posts' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
-                    <ImageIcon className="w-4 h-4" /> My Posts
+                  <button onClick={() => setProfileSubTab('posts')} className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${profileSubTab === 'posts' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
+                    <ImageIcon className="w-3.5 h-3.5" /> Posts
                   </button>
-                  <button onClick={() => setProfileSubTab('saved')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${profileSubTab === 'saved' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
-                    <Bookmark className="w-4 h-4" /> Saved
+                  <button onClick={() => setProfileSubTab('saved')} className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${profileSubTab === 'saved' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
+                    <Bookmark className="w-3.5 h-3.5" /> Saved
+                  </button>
+                  <button onClick={() => setProfileSubTab('analytics')} className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${profileSubTab === 'analytics' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
+                    <BarChart2 className="w-3.5 h-3.5" /> Analytics
                   </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
+                  {/* Posts View */}
                   {profileSubTab === 'posts' && (
                     stories.filter(s => s.authorId === user?.uid).length === 0 ? <p className="col-span-2 text-xs text-neutral-600 p-4 text-center bg-neutral-900 rounded-xl">No posts published yet.</p> : 
                       stories.filter(s => s.authorId === user?.uid).map(story => (
@@ -1059,6 +1340,7 @@ export default function App() {
                     ))
                   )}
 
+                  {/* Saved View */}
                   {profileSubTab === 'saved' && (
                     stories.filter(s => bookmarks.includes(s.id)).length === 0 ? <p className="col-span-2 text-xs text-neutral-600 p-4 text-center bg-neutral-900 rounded-xl">No saved posts yet.</p> : 
                       stories.filter(s => bookmarks.includes(s.id)).map(story => (
@@ -1069,6 +1351,31 @@ export default function App() {
                     ))
                   )}
                 </div>
+
+                {/* Creator Analytics Dashboard */}
+                {profileSubTab === 'analytics' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-neutral-900 p-5 rounded-3xl border border-neutral-800 flex flex-col items-center justify-center text-center">
+                        <TrendingUp className="w-8 h-8 text-emerald-400 mb-3" />
+                        <div className="text-4xl font-black text-white">{stories.filter(s=>s.authorId===user?.uid).reduce((acc, curr) => acc + (curr.likes?.length || 0), 0)}</div>
+                        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Total Likes</div>
+                      </div>
+                      <div className="bg-neutral-900 p-5 rounded-3xl border border-neutral-800 flex flex-col items-center justify-center text-center">
+                        <ImageIcon className="w-8 h-8 text-blue-400 mb-3" />
+                        <div className="text-4xl font-black text-white">{stories.filter(s=>s.authorId===user?.uid).length}</div>
+                        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Total Posts</div>
+                      </div>
+                    </div>
+                    <div className="bg-neutral-900 p-5 rounded-3xl border border-neutral-800 flex items-center justify-between">
+                       <div>
+                         <div className="text-2xl font-black text-white">{Math.floor(Math.random() * 500) + 120}</div>
+                         <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Profile Views This Week</div>
+                       </div>
+                       <Users className="w-10 h-10 text-purple-400 opacity-50" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1079,7 +1386,7 @@ export default function App() {
       {/* ===== FULL-SCREEN 24H STORY VIEWER ===== */}
       {activeStoryView && activeStoryView.length > 0 && (
         <div className="fixed inset-0 bg-black z-[100] flex flex-col">
-          {/* Progress Bars (Fake for now, but aesthetic) */}
+          {/* Progress Bars */}
           <div className="flex gap-1 p-2 pt-safe-top z-10 absolute top-0 left-0 right-0">
             {activeStoryView.map((_, i) => (
                <div key={i} className={`h-1 flex-1 rounded-full ${i===0 ? 'bg-white' : 'bg-white/30'}`} />
@@ -1171,23 +1478,25 @@ export default function App() {
         </div>
       )}
 
-      {/* ===== MOBILE BOTTOM NAVBAR BAR ===== */}
-      <nav className="md:hidden absolute bottom-0 left-0 right-0 bg-neutral-950/90 border-t border-neutral-800 flex justify-around p-2 pb-safe z-40 backdrop-blur-xl">
-        <button onClick={() => setCurrentTab('feed')} className={`flex flex-col items-center gap-1 p-2 ${currentTab === 'feed' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>
-          <Home className="w-5 h-5" /><span className="text-[9px] font-bold">Home</span>
+      {/* ===== UPGRADED MOBILE BOTTOM NAVBAR BAR ===== */}
+      <nav className="md:hidden absolute bottom-0 left-0 right-0 bg-neutral-950/95 border-t border-neutral-800 flex justify-around p-2 pb-safe z-40 backdrop-blur-xl">
+        <button onClick={() => setCurrentTab('feed')} className={`flex flex-col items-center gap-1 p-2 transition-colors ${currentTab === 'feed' ? (iAmVIP ? 'text-yellow-500' : 'text-blue-500') : 'text-neutral-500 hover:text-neutral-300'}`}>
+          <Home className="w-6 h-6" />
         </button>
-        <button onClick={() => setCurrentTab('explore')} className={`flex flex-col items-center gap-1 p-2 ${currentTab === 'explore' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>
-          <Compass className="w-5 h-5" /><span className="text-[9px] font-bold">Explore</span>
+        <button onClick={() => setCurrentTab('shorts')} className={`flex flex-col items-center gap-1 p-2 transition-colors ${currentTab === 'shorts' ? (iAmVIP ? 'text-yellow-500' : 'text-blue-500') : 'text-neutral-500 hover:text-neutral-300'}`}>
+          <Video className="w-6 h-6" />
         </button>
-        <button onClick={() => setCurrentTab('create')} className="flex flex-col items-center justify-center -mt-6">
-          <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 border-4 border-neutral-950 text-white"><PlusCircle className="w-6 h-6" /></div>
+        <button onClick={() => setCurrentTab('create')} className="flex flex-col items-center justify-center -mt-8">
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center border-[3px] border-neutral-950 text-white transition-transform active:scale-95 ${iAmVIP ? 'bg-yellow-500 hover:bg-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.4)] text-black' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)]'}`}>
+            <PlusCircle className="w-7 h-7" />
+          </div>
         </button>
-        <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className={`relative flex flex-col items-center gap-1 p-2 ${currentTab === 'inbox' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>
-          <Bell className="w-5 h-5" /><span className="text-[9px] font-bold">Inbox</span>
-          {unreadCount > 0 && <span className="absolute top-1 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-neutral-950"></span>}
+        <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className={`relative flex flex-col items-center gap-1 p-2 transition-colors ${currentTab === 'inbox' ? (iAmVIP ? 'text-yellow-500' : 'text-blue-500') : 'text-neutral-500 hover:text-neutral-300'}`}>
+          <Bell className="w-6 h-6" />
+          {unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border border-neutral-950"></span>}
         </button>
-        <button onClick={() => setCurrentTab('profile')} className={`flex flex-col items-center gap-1 p-2 ${currentTab === 'profile' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>
-          <User className="w-5 h-5" /><span className="text-[9px] font-bold">Profile</span>
+        <button onClick={() => { setCurrentTab('profile'); setProfileSubTab('posts'); }} className={`flex flex-col items-center gap-1 p-2 transition-colors ${currentTab === 'profile' ? (iAmVIP ? 'text-yellow-500' : 'text-blue-500') : 'text-neutral-500 hover:text-neutral-300'}`}>
+          <User className="w-6 h-6" />
         </button>
       </nav>
 
@@ -1201,9 +1510,9 @@ export default function App() {
           0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
           100% { transform: translate(var(--tx), var(--ty)) scale(1.5); opacity: 0; }
         }
-        .animate-float-up {
-          animation: float-up 1s ease-out forwards;
-        }
+        .animate-float-up { animation: float-up 1s ease-out forwards; }
+        .marquee-text { display: inline-block; white-space: nowrap; animation: marquee 5s linear infinite; }
+        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
       `}} />
     </div>
   );
