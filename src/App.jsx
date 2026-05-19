@@ -42,7 +42,8 @@ const defaultFirebaseConfig = {
   appId: "1:1234567890:web:abcdef123456"
 };
 
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify(defaultFirebaseConfig));
+const isLocalMode = typeof __firebase_config === 'undefined';
+const firebaseConfig = JSON.parse(!isLocalMode ? __firebase_config : JSON.stringify(defaultFirebaseConfig));
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -94,24 +95,52 @@ const timeAgo = (timestamp) => {
 };
 
 export default function App() {
-  // --- Auth / Base State ---
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  // --- Auth / Base State (with offline fallback engine) ---
+  const [user, setUser] = useState(() => isLocalMode ? { uid: 'local-demo-user' } : null);
+  
+  const [profile, setProfile] = useState(() => {
+    if (isLocalMode) {
+      const saved = localStorage.getItem('ph_profile');
+      return saved ? JSON.parse(saved) : {
+        username: `User_${Math.floor(Math.random() * 9000) + 1000}`,
+        emoji: '😎',
+        bio: 'Welcome to my Photo Hub!',
+        createdAt: Date.now()
+      };
+    }
+    return null;
+  });
   
   // --- Navigation / View State ---
-  const [currentTab, setCurrentTab] = useState('feed'); // 'feed' | 'create' | 'dms' | 'profile' | 'search'
-  const [feedFilter, setFeedFilter] = useState('all'); // 'all' | 'friends'
+  const [currentTab, setCurrentTab] = useState('feed');
+  const [feedFilter, setFeedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // --- Firestore Live Feeds ---
-  const [stories, setStories] = useState([]);
-  const [friends, setFriends] = useState([]);
-  const [allProfiles, setAllProfiles] = useState([]);
-  const [comments, setComments] = useState([]);
-  const [messages, setMessages] = useState([]);
+  // --- Live Feeds (Loaded from LocalStorage if offline) ---
+  const [stories, setStories] = useState(() => {
+    if (isLocalMode) {
+      const saved = localStorage.getItem('ph_stories');
+      if (saved) return JSON.parse(saved);
+      return [{
+        id: 'system-post-1',
+        authorId: 'system-bot',
+        authorName: 'Photo Hub Bot',
+        authorEmoji: '🤖',
+        textContent: 'Welcome to your deployed Photo Hub! Create a post using the Post Studio tab!',
+        bgGradient: 'from-blue-600 to-indigo-600',
+        createdAt: Date.now(),
+        likes: []
+      }];
+    }
+    return [];
+  });
+  const [friends, setFriends] = useState(() => isLocalMode ? JSON.parse(localStorage.getItem('ph_friends') || '[]') : []);
+  const [comments, setComments] = useState(() => isLocalMode ? JSON.parse(localStorage.getItem('ph_comments') || '[]') : []);
+  const [messages, setMessages] = useState(() => isLocalMode ? JSON.parse(localStorage.getItem('ph_messages') || '[]') : []);
+  const [allProfiles, setAllProfiles] = useState(() => isLocalMode ? JSON.parse(localStorage.getItem('ph_profiles') || '[]') : []);
 
   // --- Creator & Upload States ---
-  const [creationType, setCreationType] = useState('camera'); // 'camera' | 'text' | 'upload' | 'gif'
+  const [creationType, setCreationType] = useState('camera'); 
   const [textPostContent, setTextPostContent] = useState('');
   const [textPostGradient, setTextPostGradient] = useState(GRADIENTS[0]);
   const [uploadFile, setUploadFile] = useState(null);
@@ -142,15 +171,37 @@ export default function App() {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // --- Comment System State ---
-  const [activeCommentPost, setActiveCommentPost] = useState(null); // Story object
+  const [activeCommentPost, setActiveCommentPost] = useState(null);
   const [newCommentText, setNewCommentText] = useState('');
 
   // --- DM System State ---
-  const [activeChatUser, setActiveChatUser] = useState(null); // Profile object of chat target
+  const [activeChatUser, setActiveChatUser] = useState(null);
   const [newMessageText, setNewMessageText] = useState('');
 
-  // --- 1. Firebase Authentication & Listeners ---
+  // --- Offline Persistence Synchronization ---
   useEffect(() => {
+    if (isLocalMode && profile) {
+      localStorage.setItem('ph_profile', JSON.stringify(profile));
+      setEditName(profile.username || '');
+      setEditBio(profile.bio || '');
+      setEditEmoji(profile.emoji || '😎');
+      
+      // Inject bot and self into the local profile database
+      setAllProfiles([
+        { id: user.uid, ...profile },
+        { id: 'system-bot', username: 'Photo Hub Bot', emoji: '🤖', bio: 'I exist to be your first friend on GitHub Pages!', createdAt: Date.now() }
+      ]);
+    }
+  }, [profile, user]);
+
+  useEffect(() => { if (isLocalMode) localStorage.setItem('ph_stories', JSON.stringify(stories)); }, [stories]);
+  useEffect(() => { if (isLocalMode) localStorage.setItem('ph_friends', JSON.stringify(friends)); }, [friends]);
+  useEffect(() => { if (isLocalMode) localStorage.setItem('ph_comments', JSON.stringify(comments)); }, [comments]);
+  useEffect(() => { if (isLocalMode) localStorage.setItem('ph_messages', JSON.stringify(messages)); }, [messages]);
+
+  // --- 1. Firebase Authentication & Listeners (Bypassed if LocalMode) ---
+  useEffect(() => {
+    if (isLocalMode) return; 
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -163,14 +214,13 @@ export default function App() {
       }
     };
     initAuth();
-
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
 
-  // Sync / Generate Profile
+  // Sync / Generate Profile (Online only)
   useEffect(() => {
-    if (!user) return;
+    if (isLocalMode || !user) return;
     
     const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
     const unsub = onSnapshot(profileRef, (snap) => {
@@ -194,11 +244,10 @@ export default function App() {
     return unsub;
   }, [user]);
 
-  // Sync Live Feed, Profiles, Friends, Messages, & Comments
+  // Sync Live Feed, Profiles, Friends, Messages, & Comments (Online only)
   useEffect(() => {
-    if (!user) return;
+    if (isLocalMode || !user) return;
 
-    // Stories (Posts)
     const storiesRef = collection(db, 'artifacts', appId, 'public', 'data', 'stories');
     const unsubStories = onSnapshot(storiesRef, (snap) => {
       const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -206,19 +255,16 @@ export default function App() {
       setStories(fetched);
     }, err => console.error("Stories load failed:", err));
 
-    // Profiles Directory
     const profilesRef = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
     const unsubProfiles = onSnapshot(profilesRef, (snap) => {
       setAllProfiles(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, err => console.error("Profiles load failed:", err));
 
-    // Friend list
     const friendsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'friends');
     const unsubFriends = onSnapshot(friendsRef, (snap) => {
       setFriends(snap.docs.map(d => d.id));
     }, err => console.error("Friends load failed:", err));
 
-    // Comments list
     const commentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'comments');
     const unsubComments = onSnapshot(commentsRef, (snap) => {
       const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -226,7 +272,6 @@ export default function App() {
       setComments(fetched);
     }, err => console.error("Comments load failed:", err));
 
-    // Messages list
     const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
     const unsubMessages = onSnapshot(messagesRef, (snap) => {
       const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -287,7 +332,7 @@ export default function App() {
     } else {
       stopCamera();
     }
-  }, [currentTab, creationType]);
+  }, [currentTab, creationType, startCamera]);
 
   // Demo Mode Animation Engine
   useEffect(() => {
@@ -300,25 +345,21 @@ export default function App() {
       if (!ctx || !canvas) return;
       angle += 0.02;
       
-      // Clean Canvas background
       ctx.fillStyle = `rgb(15, 23, 42)`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Tech Grid
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1.5;
       const offset = (angle * 45) % 60;
       for (let x = offset; x < canvas.width; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
       for (let y = offset; y < canvas.height; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
-      // Face tracking target simulation
       ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(canvas.width / 2, canvas.height / 2, 110, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Bouncing avatar profile
       emojiX += dx; emojiY += dy;
       if (emojiX < 60 || emojiX > canvas.width - 60) dx = -dx;
       if (emojiY < 60 || emojiY > canvas.height - 60) dy = -dy;
@@ -379,7 +420,6 @@ export default function App() {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     } else return;
 
-    // High performance compression
     const max_dim = 600;
     let w = canvas.width;
     let h = canvas.height;
@@ -456,21 +496,26 @@ export default function App() {
       return;
     }
 
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), {
-        authorId: user.uid,
-        authorName: profile.username,
-        authorEmoji: profile.emoji,
-        imageUrl: finalImageUrl,
-        textContent: textContent,
-        bgGradient: bgGradient,
-        caption: customCaption,
-        isGif: isGif,
-        createdAt: Date.now(),
-        likes: []
-      });
+    const payload = {
+      authorId: user.uid,
+      authorName: profile.username,
+      authorEmoji: profile.emoji,
+      imageUrl: finalImageUrl,
+      textContent: textContent,
+      bgGradient: bgGradient,
+      caption: customCaption,
+      isGif: isGif,
+      createdAt: Date.now(),
+      likes: []
+    };
 
-      // Reset creators
+    try {
+      if (isLocalMode) {
+        setStories(prev => [{ id: Date.now().toString(), ...payload }, ...prev]);
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), payload);
+      }
+
       setCapturedPhoto(null);
       setUploadFile(null);
       setSelectedGif(null);
@@ -487,15 +532,22 @@ export default function App() {
   // --- 5. Custom Comment System Engine ---
   const handlePostComment = async () => {
     if (!user || !profile || !newCommentText.trim() || !activeCommentPost) return;
+    
+    const payload = {
+      storyId: activeCommentPost.id,
+      authorId: user.uid,
+      authorName: profile.username,
+      authorEmoji: profile.emoji,
+      text: newCommentText.trim(),
+      createdAt: Date.now()
+    };
+
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'comments'), {
-        storyId: activeCommentPost.id,
-        authorId: user.uid,
-        authorName: profile.username,
-        authorEmoji: profile.emoji,
-        text: newCommentText.trim(),
-        createdAt: Date.now()
-      });
+      if (isLocalMode) {
+        setComments(prev => [...prev, { id: Date.now().toString(), ...payload }]);
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'comments'), payload);
+      }
       setNewCommentText('');
     } catch (err) {
       console.error("Commenting error:", err);
@@ -505,15 +557,22 @@ export default function App() {
   // --- 6. Dynamic Direct Messaging Engine ---
   const handleSendDM = async () => {
     if (!user || !profile || !newMessageText.trim() || !activeChatUser) return;
+    
+    const payload = {
+      senderId: user.uid,
+      senderName: profile.username,
+      senderEmoji: profile.emoji,
+      receiverId: activeChatUser.id,
+      text: newMessageText.trim(),
+      createdAt: Date.now()
+    };
+
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
-        senderId: user.uid,
-        senderName: profile.username,
-        senderEmoji: profile.emoji,
-        receiverId: activeChatUser.id,
-        text: newMessageText.trim(),
-        createdAt: Date.now()
-      });
+      if (isLocalMode) {
+        setMessages(prev => [...prev, { id: Date.now().toString(), ...payload }]);
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), payload);
+      }
       setNewMessageText('');
     } catch (err) {
       console.error("DM sending error:", err);
@@ -523,24 +582,29 @@ export default function App() {
   // --- 7. Social Network Utility Methods ---
   const toggleLike = async (story) => {
     if (!user) return;
-    const storyRef = doc(db, 'artifacts', appId, 'public', 'data', 'stories', story.id);
     const hasLiked = story.likes?.includes(user.uid);
     const newLikes = hasLiked 
       ? (story.likes || []).filter(id => id !== user.uid)
       : [...(story.likes || []), user.uid];
     
-    try { await updateDoc(storyRef, { likes: newLikes }); } 
-    catch (err) { console.error("Error toggling like:", err); }
+    try {
+      if (isLocalMode) {
+        setStories(prev => prev.map(s => s.id === story.id ? { ...s, likes: newLikes } : s));
+      } else {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', story.id), { likes: newLikes });
+      }
+    } catch (err) { console.error("Error toggling like:", err); }
   };
 
   const toggleFriend = async (targetId) => {
     if (!user || targetId === user.uid) return;
-    const friendRef = doc(db, 'artifacts', appId, 'users', user.uid, 'friends', targetId);
     try {
-      if (friends.includes(targetId)) {
-        await deleteDoc(friendRef);
+      if (isLocalMode) {
+        setFriends(prev => prev.includes(targetId) ? prev.filter(id => id !== targetId) : [...prev, targetId]);
       } else {
-        await setDoc(friendRef, { addedAt: Date.now() });
+        const friendRef = doc(db, 'artifacts', appId, 'users', user.uid, 'friends', targetId);
+        if (friends.includes(targetId)) await deleteDoc(friendRef);
+        else await setDoc(friendRef, { addedAt: Date.now() });
       }
     } catch (err) { console.error("Error toggling friend:", err); }
   };
@@ -549,13 +613,14 @@ export default function App() {
     if (!user || !editName.trim()) return;
     setIsUpdatingProfile(true);
     try {
-      const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
-      await updateDoc(profileRef, {
-        username: editName.trim(),
-        emoji: editEmoji,
-        bio: editBio.trim()
-      });
-      alert("Profile updated!");
+      if (isLocalMode) {
+        setProfile(prev => ({ ...prev, username: editName.trim(), emoji: editEmoji, bio: editBio.trim() }));
+        alert("Profile updated successfully!");
+      } else {
+        const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
+        await updateDoc(profileRef, { username: editName.trim(), emoji: editEmoji, bio: editBio.trim() });
+        alert("Profile updated!");
+      }
     } catch (err) {
       console.error("Profile save error:", err);
     } finally {
@@ -566,13 +631,16 @@ export default function App() {
   const deleteStory = async (storyId) => {
     if (!user) return;
     try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId));
+      if (isLocalMode) {
+        setStories(prev => prev.filter(s => s.id !== storyId));
+      } else {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId));
+      }
     } catch (err) { console.error("Error deleting story:", err); }
   };
 
   // --- Filtered Feeds ---
   const filteredStories = stories.filter(story => {
-    // 1. Tag or username Search
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
       const nameMatch = story.authorName?.toLowerCase().includes(query);
@@ -580,7 +648,6 @@ export default function App() {
       const textMatch = story.textContent?.toLowerCase().includes(query);
       if (!nameMatch && !capMatch && !textMatch) return false;
     }
-    // 2. Friend/Global Filter
     if (feedFilter === 'friends') {
       return friends.includes(story.authorId) || story.authorId === user?.uid;
     }
@@ -743,7 +810,6 @@ export default function App() {
                             <img src={story.imageUrl} alt="Uploaded Post" className="w-full h-full object-cover" />
                           </div>
                         ) : (
-                          // Text gradient post
                           <div className={`aspect-[4/3] bg-gradient-to-br ${story.bgGradient || 'from-neutral-800 to-neutral-900'} p-8 flex items-center justify-center text-center`}>
                             <p className="text-xl md:text-2xl font-extrabold tracking-wide text-white drop-shadow-md">
                               {story.textContent}
