@@ -4,7 +4,8 @@ import {
   UserPlus, Users, Home, Send, X, UserCheck, Globe, MessageCircle, MessageSquare, 
   User, Search, PlusCircle, ImageIcon, Type, TrendingUp, Hash, Check,
   Bell, Compass, Disc, BadgeCheck, Palette, Music, Play, Pause, Wand2, Flame,
-  Bookmark, Share, Video, BarChart2, PieChart, Award, Lock, Mail, AtSign, Key, LogOut, Crown
+  Bookmark, Share, Video, BarChart2, PieChart, Award, Lock, Mail, AtSign, Key, LogOut, Crown,
+  MapPin, Gem, Mic, Square, SplitSquareHorizontal, Bot
 } from 'lucide-react';
 
 // --- Firebase Initialization ---
@@ -42,9 +43,8 @@ const FILTERS = [
 
 const EMOJIS = ['😎', '👻', '👾', '🦊', '🚀', '🌟', '🦄', '🦖', '🍕', '🎸', '🐱', '🍩', '🔮', '👽', '🔥', '💖', '👑', '💎'];
 
-const SOUNDTRACKS = [
-  'None', 'Lofi Chill ☕️', 'Synthwave 🌃', 'Pop Anthem 🎤', 'Acoustic Vibes 🎸', 'Trap Beat 🎧', 'Cyberpunk 🦾'
-];
+const SOUNDTRACKS = ['None', 'Lofi Chill ☕️', 'Synthwave 🌃', 'Pop Anthem 🎤', 'Acoustic Vibes 🎸', 'Trap Beat 🎧', 'Cyberpunk 🦾'];
+const LOCATIONS = ['None', '📍 Los Angeles, CA', '📍 New York, NY', '📍 Tokyo, Japan', '📍 London, UK', '📍 Paris, France', '📍 Dubai, UAE', '📍 Sydney, AUS', '📍 The Moon 🌕'];
 
 const AUDIO_MAP = {
   'Lofi Chill ☕️': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
@@ -58,7 +58,7 @@ const AUDIO_MAP = {
 const GRADIENTS = [
   'from-pink-500 to-rose-500', 'from-purple-600 to-indigo-600', 'from-cyan-500 to-blue-500',
   'from-amber-400 to-orange-500', 'from-emerald-400 to-teal-600', 'from-violet-600 to-fuchsia-600',
-  'from-yellow-400 to-amber-600' // VIP Gold
+  'from-yellow-400 to-amber-600'
 ];
 
 const CURATED_GIFS = [
@@ -69,10 +69,22 @@ const CURATED_GIFS = [
 ];
 
 const MAGIC_CAPTIONS = [
-  "Just vibing ✨ #vibes", "Main character energy 👑 #maincharacter", "No cap, this is a masterpiece 🎨",
+  "Just vibing ✨ #vibes", "Main character energy 👑 #maincharacter @relthecreator", "No cap, this is a masterpiece 🎨",
   "Living my best life 🚀 #blessed", "Catch flights, not feelings ✈️", "Built different 🦾 #gym",
-  "Vibe check passed ✅", "Entering my villain era 😈", "Stay hydrated 💧 #health",
-  "Out of office 🌴", "Too glam to give a damn 💅", "W ✨ #winning"
+  "Vibe check passed ✅", "Entering my villain era 😈", "Stay hydrated 💧 #health"
+];
+
+// --- AI Bot Configuration ---
+const ASTEME_AI = { id: 'asteme_ai', username: 'Asteme AI', emoji: '🤖', isVerified: true };
+const AI_RESPONSES = [
+  "That is so cool! 🚀 What else is on your mind?",
+  "I'm just a bot, but I totally agree with you.",
+  "Have you checked out the Explore page lately? Lots of 🔥 content there.",
+  "Your vibes are immaculate today ✨",
+  "Hmm, interesting! Tell me more.",
+  "I beep, therefore I boop. 🤖",
+  "You should definitely post that to your 24h Story!",
+  "Big W right there. 🏆"
 ];
 
 const timeAgo = (timestamp) => {
@@ -86,10 +98,8 @@ const timeAgo = (timestamp) => {
   return `${Math.floor(hours / 24)}d ago`;
 };
 
-// --- VIP Check ---
 const isVIP = (username) => username?.toLowerCase() === 'relthecreator';
 
-// --- Sub-components ---
 const ParticleBurst = ({ particles }) => (
   <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
     {particles.map(p => (
@@ -109,7 +119,6 @@ export default function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [profile, setProfile] = useState(null);
   
-  // Auth Form States
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -118,9 +127,9 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   // --- Navigation & View State ---
-  const [currentTab, setCurrentTab] = useState('feed'); // feed | shorts | explore | create | inbox | profile
+  const [currentTab, setCurrentTab] = useState('feed'); 
   const [inboxSubTab, setInboxSubTab] = useState('activity'); 
-  const [profileSubTab, setProfileSubTab] = useState('posts'); // posts | saved | analytics
+  const [profileSubTab, setProfileSubTab] = useState('posts'); 
   const [feedFilter, setFeedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeStoryView, setActiveStoryView] = useState(null); 
@@ -145,7 +154,17 @@ export default function App() {
   const [selectedGif, setSelectedGif] = useState(null);
   const [customCaption, setCustomCaption] = useState('');
   const [selectedSoundtrack, setSelectedSoundtrack] = useState(SOUNDTRACKS[0]);
+  const [selectedLocation, setSelectedLocation] = useState(LOCATIONS[0]);
   
+  // --- Remix / Duet State ---
+  const [remixPost, setRemixPost] = useState(null);
+
+  // --- Audio Recording State ---
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
   // --- Camera Hardware ---
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -189,6 +208,19 @@ export default function App() {
   const markNotifsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   const handleVideoCanPlay = () => setIsCameraReady(true);
 
+  // Vibe Particle Trigger
+  const triggerParticles = (e, emoji = '💖', count = 8) => {
+    if (!e || !e.clientX) return;
+    const rect = e.target.getBoundingClientRect();
+    const newParticles = Array.from({length: count}).map((_, i) => ({
+       id: Date.now() + i + Math.random(), 
+       x: rect.left + rect.width/2, y: rect.top + rect.height/2,
+       vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji
+    }));
+    setParticles(prev => [...prev, ...newParticles]);
+    setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
+  };
+
   // --- Firebase Auth & Strict Registration ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -218,35 +250,23 @@ export default function App() {
           throw new Error(`The handle @${authUsername} is already taken!`);
         }
 
-        // Create Account
         const cred = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        
-        // Lock in Username
         await setDoc(userRef, { uid: cred.user.uid });
         
-        // Setup Profile
         const defaultProfile = { 
           username: authUsername.trim(), 
-          emoji: '😎', 
-          bio: 'Ready to vibe!', 
-          createdAt: Date.now(), 
-          isVerified: true 
+          emoji: '😎', bio: 'Ready to vibe!', 
+          createdAt: Date.now(), isVerified: true, diamondsEarned: 0 
         };
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', cred.user.uid), defaultProfile);
       }
-    } catch (err) {
-      setAuthError(err.message.replace('Firebase: ', ''));
-    } finally {
-      setIsAuthLoading(false);
-    }
+    } catch (err) { setAuthError(err.message.replace('Firebase: ', '')); } 
+    finally { setIsAuthLoading(false); }
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setProfile(null);
-      setCurrentTab('feed');
-    } catch (err) { console.error(err); }
+    try { await signOut(auth); setProfile(null); setCurrentTab('feed'); } 
+    catch (err) { console.error(err); }
   };
 
   // --- Global Data Syncer ---
@@ -277,15 +297,47 @@ export default function App() {
     return () => { unsubProf(); unsubStories(); unsubFleets(); unsubAllProfiles(); unsubFriends(); unsubBookmarks(); unsubComments(); unsubMessages(); };
   }, [user]);
 
-  // Handle New Message Notifications & Auto-Scroll
   useEffect(() => {
     if (messages.length > prevMessagesLength.current && prevMessagesLength.current !== 0) {
       const newMsg = messages[messages.length - 1];
-      if (newMsg.receiverId === user?.uid && activeChatUser?.id !== newMsg.senderId) notify(`💬 New message from ${newMsg.senderName}!`);
+      if (newMsg.receiverId === user?.uid && activeChatUser?.id !== newMsg.senderId && newMsg.senderId !== 'asteme_ai') {
+        notify(`💬 New message from ${newMsg.senderName}!`);
+      }
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
     prevMessagesLength.current = messages.length;
   }, [messages, activeChatUser, user, notify]);
+
+  // --- Audio Recording Engine ---
+  const startAudioRecording = async () => {
+    try {
+      audioChunksRef.current = [];
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(mediaStream);
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => setRecordedAudio(reader.result);
+        mediaStream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorderRef.current.start();
+      setIsRecordingAudio(true);
+    } catch (err) {
+      console.error(err);
+      alert("Microphone access denied or unavailable.");
+    }
+  };
+
+  const stopAudioRecording = () => {
+    if (mediaRecorderRef.current && isRecordingAudio) {
+      mediaRecorderRef.current.stop();
+      setIsRecordingAudio(false);
+    }
+  };
 
   // --- Camera Engine ---
   const startCamera = useCallback(async () => {
@@ -393,15 +445,7 @@ export default function App() {
   const generateMagicCaption = (e) => {
     e.preventDefault();
     setCustomCaption(MAGIC_CAPTIONS[Math.floor(Math.random() * MAGIC_CAPTIONS.length)]);
-    if (e && e.clientX) {
-      const rect = e.target.getBoundingClientRect();
-      const newParticles = Array.from({length: 5}).map((_, i) => ({
-         id: Date.now() + i + 'sparkle', x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
-         vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji: '✨'
-      }));
-      setParticles(prev => [...prev, ...newParticles]);
-      setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
-    }
+    triggerParticles(e, '✨', 5);
   };
 
   const handlePollChange = (idx, value) => {
@@ -410,24 +454,37 @@ export default function App() {
     setPollOptions(newOptions);
   };
 
+  // Setup Remix Workflow
+  const initiateRemix = (story) => {
+    setRemixPost(story);
+    setCurrentTab('create');
+    setCreationType('camera');
+  };
+
+  // --- Create & Interactivity Logic ---
   const handleCreatePost = async () => {
     if (!user || !profile) return;
     setIsPosting(true);
     let finalImageUrl = null; let textContent = null; let bgGradient = null; let isGif = false;
+    let voiceNote = null;
 
     if (creationType === 'camera' && capturedPhoto) finalImageUrl = capturedPhoto;
     else if (creationType === 'upload' && uploadFile) finalImageUrl = uploadFile;
     else if (creationType === 'gif' && selectedGif) { finalImageUrl = selectedGif; isGif = true; }
     else if (creationType === 'text' && textPostContent.trim() !== '') { textContent = textPostContent; bgGradient = textPostGradient; }
+    else if (creationType === 'audio' && recordedAudio) { voiceNote = recordedAudio; bgGradient = textPostGradient; }
     else { setIsPosting(false); return; }
 
     const finalPollOptions = creationType === 'text' ? pollOptions.filter(o => o.trim() !== '') : [];
+    const finalLocation = selectedLocation === 'None' ? null : selectedLocation;
 
     const payload = {
       authorId: user.uid, authorName: profile.username, authorEmoji: profile.emoji,
-      imageUrl: finalImageUrl, textContent: textContent, bgGradient: bgGradient,
-      caption: customCaption, soundtrack: selectedSoundtrack, isGif: isGif, createdAt: Date.now(), 
-      likes: [], pollOptions: finalPollOptions.length > 1 ? finalPollOptions : null, votes: {}, votedBy: []
+      imageUrl: finalImageUrl, textContent: textContent, bgGradient: bgGradient, voiceNote: voiceNote,
+      caption: customCaption, soundtrack: selectedSoundtrack, location: finalLocation,
+      isGif: isGif, createdAt: Date.now(), 
+      reactions: {}, diamonds: 0, pollOptions: finalPollOptions.length > 1 ? finalPollOptions : null, votes: {}, votedBy: [],
+      remixData: remixPost ? { id: remixPost.id, imageUrl: remixPost.imageUrl, authorName: remixPost.authorName } : null
     };
 
     try {
@@ -439,8 +496,8 @@ export default function App() {
         notify("🚀 Published to Global Feed!");
       }
       setCapturedPhoto(null); setUploadFile(null); setSelectedGif(null); setTextPostContent(''); 
-      setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]); setIsPostingToStories(false);
-      setPollOptions(['', '']);
+      setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]); setSelectedLocation(LOCATIONS[0]);
+      setIsPostingToStories(false); setPollOptions(['', '']); setRecordedAudio(null); setRemixPost(null);
       setCurrentTab('feed');
     } catch (err) { console.error("Posting error:", err); alert("Error publishing to database."); } 
     finally { setIsPosting(false); }
@@ -456,11 +513,24 @@ export default function App() {
     const newVotedBy = [...(story.votedBy || []), user.uid];
 
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId), {
-        votes: newVotes, votedBy: newVotedBy
-      });
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId), { votes: newVotes, votedBy: newVotedBy });
       notify("🗳️ Vote counted!");
     } catch (err) { console.error(err); }
+  };
+
+  const sendGift = async (story, e) => {
+    if (!user) return;
+    triggerParticles(e, '💎', 12);
+    
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', story.id), { diamonds: (story.diamonds || 0) + 1 });
+      const profRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', story.authorId);
+      const profSnap = await getDoc(profRef);
+      if (profSnap.exists()) {
+        await updateDoc(profRef, { diamondsEarned: (profSnap.data().diamondsEarned || 0) + 1 });
+      }
+      notify(`💎 Sent a Diamond to ${story.authorName}!`);
+    } catch (err) { console.error("Gifting error:", err); }
   };
 
   const handlePostComment = async () => {
@@ -475,26 +545,39 @@ export default function App() {
 
   const handleSendDM = async () => {
     if (!user || !profile || !newMessageText.trim() || !activeChatUser) return;
-    const payload = { senderId: user.uid, senderName: profile.username, senderEmoji: profile.emoji, receiverId: activeChatUser.id, text: newMessageText.trim(), createdAt: Date.now() };
-    try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), payload); setNewMessageText(''); } catch (err) { console.error(err); }
+    const textToSend = newMessageText.trim();
+    const isBot = activeChatUser.id === 'asteme_ai';
+    
+    const payload = { senderId: user.uid, senderName: profile.username, senderEmoji: profile.emoji, receiverId: activeChatUser.id, text: textToSend, createdAt: Date.now() };
+    setNewMessageText('');
+    
+    try { 
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), payload); 
+      
+      // Asteme AI Auto-Responder Logic
+      if (isBot) {
+        setTimeout(async () => {
+          const randomReply = AI_RESPONSES[Math.floor(Math.random() * AI_RESPONSES.length)];
+          const botPayload = { senderId: 'asteme_ai', senderName: 'Asteme AI', senderEmoji: '🤖', receiverId: user.uid, text: randomReply, createdAt: Date.now() };
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), botPayload); 
+        }, 1500);
+      }
+    } catch (err) { console.error(err); }
   };
 
-  const toggleLike = async (story, e) => {
+  const toggleReaction = async (story, emoji, e) => {
     if (!user) return;
-    if (e && e.clientX) {
-      const rect = e.target.getBoundingClientRect();
-      const newParticles = Array.from({length: 8}).map((_, i) => ({
-         id: Date.now() + i, x: rect.left + rect.width/2, y: rect.top + rect.height/2,
-         vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji: isVIP(profile?.username) ? '💎' : '💖'
-      }));
-      setParticles(prev => [...prev, ...newParticles]);
-      setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
+    triggerParticles(e, emoji, 5);
+    const newReactions = { ...(story.reactions || {}) };
+    
+    if (newReactions[user.uid] === emoji) {
+      delete newReactions[user.uid]; // Toggle off
+    } else {
+      newReactions[user.uid] = emoji; // Set reaction
     }
-    const hasLiked = story.likes?.includes(user.uid);
-    const newLikes = hasLiked ? (story.likes || []).filter(id => id !== user.uid) : [...(story.likes || []), user.uid];
+    
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', story.id), { likes: newLikes });
-      if (!hasLiked && story.authorId !== user.uid) notify(`💖 You liked ${story.authorName}'s post!`);
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', story.id), { reactions: newReactions });
     } catch (err) { console.error(err); }
   };
 
@@ -510,16 +593,13 @@ export default function App() {
   const toggleAudio = (post) => {
     if (!AUDIO_MAP[post.soundtrack]) return;
     if (currentAudio.postId === post.id) { 
-      audioRef.current?.pause(); 
-      setCurrentAudio({ url: null, postId: null }); 
+      audioRef.current?.pause(); setCurrentAudio({ url: null, postId: null }); 
     } else { 
       setCurrentAudio({ url: AUDIO_MAP[post.soundtrack], postId: post.id }); 
       setTimeout(() => {
         if (audioRef.current) {
           audioRef.current.play().catch(err => {
-            console.error("Audio playback error:", err);
-            notify("⚠️ Soundtrack failed to load or was blocked.");
-            setCurrentAudio({ url: null, postId: null });
+            console.error("Audio playback error:", err); notify("⚠️ Soundtrack failed to load or was blocked."); setCurrentAudio({ url: null, postId: null });
           });
         }
       }, 50); 
@@ -541,10 +621,7 @@ export default function App() {
   const handleUpdateProfile = async () => {
     if (!user) return;
     setIsUpdatingProfile(true);
-    try { 
-      // Note: Username editing is locked on the UI now to ensure uniqueness integrity
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { emoji: editEmoji, bio: editBio.trim() }); 
-    } 
+    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { emoji: editEmoji, bio: editBio.trim() }); } 
     catch (err) { console.error(err); } finally { setIsUpdatingProfile(false); notify("Profile Updated!"); }
   };
 
@@ -554,13 +631,12 @@ export default function App() {
     try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', colName, storyId)); notify("Deleted."); } catch (err) { console.error(err); }
   };
 
-  const renderCaptionWithHashtags = (text) => {
+  const renderCaptionWithTags = (text) => {
     if (!text) return null;
-    const parts = text.split(/(#\w+)/g);
+    const parts = text.split(/(#\w+|@\w+)/g);
     return parts.map((part, i) => {
-      if (part.startsWith('#')) {
-        return <span key={i} onClick={(e) => { e.stopPropagation(); setSearchQuery(part); setCurrentTab('feed'); }} className="text-blue-400 font-semibold cursor-pointer hover:underline">{part}</span>;
-      }
+      if (part.startsWith('#')) return <span key={i} onClick={(e) => { e.stopPropagation(); setSearchQuery(part); setCurrentTab('feed'); }} className="text-blue-400 font-semibold cursor-pointer hover:underline">{part}</span>;
+      if (part.startsWith('@')) return <span key={i} onClick={(e) => { e.stopPropagation(); setSearchQuery(part.substring(1)); setCurrentTab('feed'); }} className="text-pink-400 font-semibold cursor-pointer hover:underline">{part}</span>;
       return part;
     });
   };
@@ -577,6 +653,9 @@ export default function App() {
   const chatHistory = messages.filter(m => (m.senderId === user?.uid && m.receiverId === activeChatUser?.id) || (m.senderId === activeChatUser?.id && m.receiverId === user?.uid));
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Insert AI Bot into friend list dynamically
+  const displayFriends = [ASTEME_AI, ...allProfiles.filter(p => friends.includes(p.id))];
+
   // --- Auth Screen Render ---
   if (isAuthenticating) {
     return (
@@ -592,9 +671,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex items-center justify-center p-4 relative overflow-hidden">
-        {/* Dynamic Animated Tech Header Backdrop */}
         <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-blue-900/20 via-transparent to-transparent pointer-events-none z-0" />
-        
         <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-2xl relative z-10">
           <div className="text-center mb-8">
             <div className="bg-blue-600 w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.4)] mb-4">
@@ -653,14 +730,11 @@ export default function App() {
     );
   }
 
-  // Determine if Current User is VIP
   const iAmVIP = isVIP(profile?.username);
 
   // --- Main App Render ---
   return (
     <div className="h-screen bg-neutral-950 text-white font-sans flex flex-col md:flex-row overflow-hidden relative selection:bg-blue-500/30">
-      
-      {/* Global Audio Player & Particle Engine */}
       <audio ref={audioRef} src={currentAudio.url || ''} onEnded={() => setCurrentAudio({ url: null, postId: null })} loop />
       <ParticleBurst particles={particles} />
 
@@ -689,12 +763,12 @@ export default function App() {
             <Home className="w-5 h-5" /> Home Feed
           </button>
           <button onClick={() => setCurrentTab('shorts')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'shorts' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
-            <Video className="w-5 h-5" /> Asteme Shorts <span className="ml-auto bg-red-500 text-[9px] px-1.5 py-0.5 rounded-full text-white">NEW</span>
+            <Video className="w-5 h-5" /> Asteme Shorts
           </button>
           <button onClick={() => setCurrentTab('explore')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'explore' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <Compass className="w-5 h-5" /> Explore Grid
           </button>
-          <button onClick={() => setCurrentTab('create')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'create' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+          <button onClick={() => { setCurrentTab('create'); setRemixPost(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'create' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
             <PlusCircle className="w-5 h-5" /> Post Studio
           </button>
           <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'inbox' ? (iAmVIP ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/25' : 'bg-blue-500 text-white shadow-lg shadow-blue-500/25') : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
@@ -724,18 +798,16 @@ export default function App() {
           </div>
         )}
 
-        {/* Dynamic Tab Switchboard */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           
           {/* TAB 1: HOME FEED */}
           {currentTab === 'feed' && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
               
-              {/* Search & Filter Header */}
               <div className="flex justify-between items-center bg-neutral-900/60 p-2 rounded-xl border border-neutral-800 backdrop-blur-sm">
                 <div className="relative flex-1">
                   <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-2.5" />
-                  <input type="text" placeholder="Search hashtags or friends..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-none pl-9 pr-4 py-2 text-sm focus:outline-none text-neutral-200" />
+                  <input type="text" placeholder="Search @users, tags..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-none pl-9 pr-4 py-2 text-sm focus:outline-none text-neutral-200" />
                   {searchQuery && <button onClick={()=>setSearchQuery('')} className="absolute right-2 top-2.5 text-neutral-500"><X className="w-4 h-4"/></button>}
                 </div>
                 <div className="flex bg-neutral-950 rounded-lg p-1 ml-2 border border-neutral-800">
@@ -754,7 +826,6 @@ export default function App() {
                   <span className="text-[10px] font-bold text-neutral-400">Add Story</span>
                 </button>
 
-                {/* Render active 24h stories */}
                 {Array.from(new Set(fleets.map(f => f.authorId))).map(authorId => {
                   const userFleets = fleets.filter(f => f.authorId === authorId);
                   const latest = userFleets[0];
@@ -787,12 +858,14 @@ export default function App() {
                 filteredStories.map((story) => {
                   const isMine = story.authorId === user?.uid;
                   const isFriend = friends.includes(story.authorId);
-                  const hasLiked = story.likes?.includes(user?.uid);
                   const isBookmarked = bookmarks.includes(story.id);
                   const postComments = comments.filter(c => c.storyId === story.id);
                   const profileData = allProfiles.find(p => p.id === story.authorId) || {};
                   const isPlaying = currentAudio.postId === story.id;
-                  const isTrending = story.likes?.length >= 3;
+                  
+                  const reactionsArray = story.reactions ? Object.values(story.reactions) : [];
+                  const isTrending = reactionsArray.length >= 3;
+                  const myReaction = story.reactions?.[user?.uid];
                   const authorIsVIP = isVIP(story.authorName);
                   
                   return (
@@ -812,25 +885,50 @@ export default function App() {
                               {timeAgo(story.createdAt)}
                               {isTrending && <span className="flex items-center gap-1 text-[9px] bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse"><Flame className="w-3 h-3" /> Trending</span>}
                             </div>
+                            {story.location && (
+                              <div className="text-[9px] mt-1 text-blue-300 font-semibold tracking-wider flex items-center gap-1">
+                                <MapPin className="w-3 h-3" /> {story.location}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        {!isMine ? (
-                          <button onClick={() => toggleFriend(story.authorId)} className={`p-2 rounded-full transition-colors ${isFriend ? 'bg-blue-500/10 text-blue-400' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}>
-                            {isFriend ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                          </button>
-                        ) : (
-                          <button onClick={() => deleteStory(story.id)} className="p-2 text-neutral-500 hover:text-red-400 transition-colors bg-neutral-950 rounded-full">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        
+                        <div className="flex items-center gap-2">
+                          {!isMine && (
+                            <button onClick={() => toggleFriend(story.authorId)} className={`p-2 rounded-full transition-colors ${isFriend ? 'bg-blue-500/10 text-blue-400' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}>
+                              {isFriend ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                            </button>
+                          )}
+                          {(isMine || iAmVIP) && (
+                            <button onClick={() => deleteStory(story.id)} className="p-2 text-neutral-500 hover:text-red-400 transition-colors bg-neutral-950 rounded-full">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="w-full relative bg-black aspect-[4/5] flex items-center justify-center overflow-hidden">
-                        {story.imageUrl ? (
+                        {/* Split Screen Logic for Duets / Remixes */}
+                        {story.remixData ? (
+                           <div className="flex w-full h-full">
+                              <div className="w-1/2 h-full border-r border-neutral-800 relative">
+                                 {story.remixData.imageUrl && <img src={story.remixData.imageUrl} className="w-full h-full object-cover" />}
+                                 <span className="absolute bottom-2 left-2 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded backdrop-blur-sm">@{story.remixData.authorName}</span>
+                              </div>
+                              <div className="w-1/2 h-full relative">
+                                 {story.imageUrl && <img src={story.imageUrl} className="w-full h-full object-cover" />}
+                              </div>
+                           </div>
+                        ) : story.imageUrl ? (
                           <img src={story.imageUrl} alt="Uploaded Post" className="w-full h-full object-cover" />
+                        ) : story.voiceNote ? (
+                          <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} flex flex-col items-center justify-center p-8`}>
+                            <Mic className="w-16 h-16 text-white mb-6 animate-pulse drop-shadow-xl" />
+                            <audio controls src={story.voiceNote} className="w-full max-w-[200px]" />
+                          </div>
                         ) : (
                           <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-8 flex flex-col items-center justify-center text-center`}>
-                            <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl mb-4">{renderCaptionWithHashtags(story.textContent)}</p>
+                            <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl mb-4">{renderCaptionWithTags(story.textContent)}</p>
                             
                             {/* Poll Rendering */}
                             {story.pollOptions && story.pollOptions.length > 0 && (
@@ -882,13 +980,30 @@ export default function App() {
                         )}
 
                         <div className="flex justify-between mb-3 relative items-center">
-                          <div className="flex gap-4">
-                            <button onClick={(e) => toggleLike(story, e)} className={`flex items-center gap-1.5 text-sm font-bold transition-transform hover:scale-110 ${hasLiked ? 'text-pink-500' : 'text-neutral-300'}`}>
-                              <Heart className={`w-6 h-6 ${hasLiked ? 'fill-pink-500' : ''}`} /> {story.likes?.length || 0}
-                            </button>
+                          <div className="flex gap-3">
+                            
+                            {/* NEW: Reaction Bar */}
+                            <div className="flex items-center gap-2 bg-neutral-950 border border-neutral-800 rounded-full px-2 py-1">
+                               <button onClick={(e) => toggleReaction(story, '❤️', e)} className={`text-sm hover:scale-125 transition-transform ${myReaction === '❤️' ? 'opacity-100 scale-110' : 'opacity-60 grayscale'}`}>❤️</button>
+                               <button onClick={(e) => toggleReaction(story, '😂', e)} className={`text-sm hover:scale-125 transition-transform ${myReaction === '😂' ? 'opacity-100 scale-110' : 'opacity-60 grayscale'}`}>😂</button>
+                               <button onClick={(e) => toggleReaction(story, '🔥', e)} className={`text-sm hover:scale-125 transition-transform ${myReaction === '🔥' ? 'opacity-100 scale-110' : 'opacity-60 grayscale'}`}>🔥</button>
+                               <span className="text-xs font-bold text-neutral-400 pl-1">{reactionsArray.length}</span>
+                            </div>
+
                             <button onClick={() => setActiveCommentPost(story)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-white transition-transform hover:scale-110">
                               <MessageCircle className="w-6 h-6" /> {postComments.length}
                             </button>
+                            <button onClick={(e) => sendGift(story, e)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-cyan-400 transition-transform hover:scale-110">
+                              <Gem className={`w-6 h-6 ${story.diamonds > 0 ? 'fill-cyan-500 text-cyan-400' : ''}`} /> {story.diamonds || 0}
+                            </button>
+                            
+                            {/* Remix Button */}
+                            {story.imageUrl && (
+                              <button onClick={() => initiateRemix(story)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-purple-400 transition-transform hover:scale-110" title="Remix this Post">
+                                <SplitSquareHorizontal className="w-5 h-5" />
+                              </button>
+                            )}
+
                             <button onClick={() => shareToClipboard(story.id)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-white transition-transform hover:scale-110">
                               <Share className="w-5 h-5" />
                             </button>
@@ -901,7 +1016,7 @@ export default function App() {
 
                         {story.caption && (
                           <div className="text-xs text-neutral-200">
-                            <span className="font-bold mr-2">{story.authorName}</span>{renderCaptionWithHashtags(story.caption)}
+                            <span className="font-bold mr-2">{story.authorName}</span>{renderCaptionWithTags(story.caption)}
                           </div>
                         )}
                       </div>
@@ -912,22 +1027,21 @@ export default function App() {
             </div>
           )}
 
-          {/* ================================================= */}
-          {/* TAB: ASTEME SHORTS (TIKTOK / REELS CLONE VIEW)    */}
-          {/* ================================================= */}
+          {/* TAB: ASTEME SHORTS */}
           {currentTab === 'shorts' && (
             <div className="h-full w-full max-w-md mx-auto snap-y snap-mandatory overflow-y-scroll scrollbar-hide pb-16 md:pb-0 bg-black">
-              {stories.filter(s => s.imageUrl).length === 0 ? (
+              {stories.filter(s => s.imageUrl && !s.remixData).length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-neutral-500 space-y-4">
                   <Video className="w-16 h-16 opacity-30" />
                   <p className="font-bold">No Shorts Available</p>
                 </div>
               ) : (
-                stories.filter(s => s.imageUrl).map((story, i) => {
-                  const hasLiked = story.likes?.includes(user?.uid);
+                stories.filter(s => s.imageUrl && !s.remixData).map((story, i) => {
+                  const reactionsArray = story.reactions ? Object.values(story.reactions) : [];
                   const isBookmarked = bookmarks.includes(story.id);
                   const profileData = allProfiles.find(p => p.id === story.authorId) || {};
                   const authorIsVIP = isVIP(story.authorName);
+                  const isMine = story.authorId === user?.uid;
                   
                   return (
                     <div key={`short-${story.id}`} className="h-full w-full snap-start relative flex items-center justify-center bg-neutral-950 border-b border-neutral-900">
@@ -936,11 +1050,11 @@ export default function App() {
                       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80 pointer-events-none" />
                       
                       <div className="absolute right-4 bottom-28 md:bottom-20 flex flex-col gap-6 items-center z-10">
-                        <button onClick={(e) => toggleLike(story, e)} className="flex flex-col items-center gap-1 group">
+                        <button onClick={(e) => toggleReaction(story, '❤️', e)} className="flex flex-col items-center gap-1 group">
                           <div className="bg-black/40 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform">
-                            <Heart className={`w-7 h-7 ${hasLiked ? 'fill-pink-500 text-pink-500' : 'text-white'}`} />
+                            <Heart className={`w-7 h-7 ${story.reactions?.[user?.uid] ? 'fill-pink-500 text-pink-500' : 'text-white'}`} />
                           </div>
-                          <span className="text-white text-xs font-bold drop-shadow-md">{story.likes?.length || 0}</span>
+                          <span className="text-white text-xs font-bold drop-shadow-md">{reactionsArray.length}</span>
                         </button>
                         
                         <button onClick={() => setActiveCommentPost(story)} className="flex flex-col items-center gap-1 group">
@@ -950,11 +1064,11 @@ export default function App() {
                           <span className="text-white text-xs font-bold drop-shadow-md">{comments.filter(c => c.storyId === story.id).length}</span>
                         </button>
 
-                        <button onClick={() => toggleBookmark(story.id)} className="flex flex-col items-center gap-1 group">
+                        <button onClick={(e) => sendGift(story, e)} className="flex flex-col items-center gap-1 group">
                           <div className="bg-black/40 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform">
-                            <Bookmark className={`w-7 h-7 ${isBookmarked ? 'fill-yellow-500 text-yellow-500' : 'text-white'}`} />
+                            <Gem className={`w-7 h-7 ${story.diamonds > 0 ? 'text-cyan-400 fill-cyan-500' : 'text-white'}`} />
                           </div>
-                          <span className="text-white text-xs font-bold drop-shadow-md">Save</span>
+                          <span className="text-white text-xs font-bold drop-shadow-md">{story.diamonds || 0}</span>
                         </button>
 
                         <button onClick={() => shareToClipboard(story.id)} className="flex flex-col items-center gap-1 group">
@@ -963,6 +1077,15 @@ export default function App() {
                           </div>
                           <span className="text-white text-xs font-bold drop-shadow-md">Share</span>
                         </button>
+                        
+                        {(isMine || iAmVIP) && (
+                          <button onClick={() => deleteStory(story.id)} className="flex flex-col items-center gap-1 group mt-2">
+                            <div className="bg-red-500/80 p-3 rounded-full backdrop-blur-md group-hover:scale-110 transition-transform shadow-lg shadow-red-500/20">
+                              <Trash2 className="w-7 h-7 text-white" />
+                            </div>
+                            <span className="text-red-200 text-xs font-bold drop-shadow-md">Delete</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="absolute bottom-20 md:bottom-12 left-4 right-20 text-white z-10 space-y-3">
@@ -976,7 +1099,7 @@ export default function App() {
                         </div>
                         {story.caption && (
                           <p className="text-sm font-medium drop-shadow-lg leading-snug line-clamp-2">
-                            {renderCaptionWithHashtags(story.caption)}
+                            {renderCaptionWithTags(story.caption)}
                           </p>
                         )}
                         {story.soundtrack && story.soundtrack !== 'None' && (
@@ -1006,7 +1129,7 @@ export default function App() {
                       <img src={story.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
                         <Heart className="w-6 h-6 text-white fill-white" />
-                        <span className="text-white font-bold text-xs">{story.likes?.length || 0}</span>
+                        <span className="text-white font-bold text-xs">{story.reactions ? Object.keys(story.reactions).length : 0}</span>
                       </div>
                     </div>
                   ))
@@ -1019,23 +1142,41 @@ export default function App() {
           {currentTab === 'create' && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
               <div className="flex justify-between items-center">
-                <h2 className={`text-xl font-extrabold tracking-wide ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>CREATIVE STUDIO</h2>
+                <h2 className={`text-xl font-extrabold tracking-wide flex items-center gap-2 ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>
+                  CREATIVE STUDIO
+                  {remixPost && <span className="bg-purple-500/20 text-purple-400 text-[10px] px-2 py-0.5 rounded-full border border-purple-500/30">REMIX MODE</span>}
+                </h2>
                 
-                <button 
-                  onClick={() => setIsPostingToStories(!isPostingToStories)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all ${isPostingToStories ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-neutral-700 bg-neutral-800 text-neutral-400'}`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" /> {isPostingToStories ? 'Posting to 24h Story' : 'Posting to Feed'}
-                </button>
+                {!remixPost && (
+                  <button 
+                    onClick={() => setIsPostingToStories(!isPostingToStories)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all ${isPostingToStories ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-neutral-700 bg-neutral-800 text-neutral-400'}`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" /> {isPostingToStories ? 'Posting to 24h Story' : 'Posting to Feed'}
+                  </button>
+                )}
+                {remixPost && (
+                  <button onClick={() => setRemixPost(null)} className="text-xs text-red-400 hover:underline">Cancel Remix</button>
+                )}
               </div>
               
-              <div className="grid grid-cols-4 gap-1.5 bg-neutral-900 p-1.5 rounded-xl border border-neutral-800">
-                <button onClick={() => setCreationType('camera')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'camera' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Camera</button>
-                <button onClick={() => {setCreationType('text'); setPollOptions(['', ''])}} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'text' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Text & Polls</button>
-                <button onClick={() => setCreationType('upload')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'upload' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Upload</button>
-                <button onClick={() => setCreationType('gif')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'gif' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>GIFs</button>
+              <div className="grid grid-cols-5 gap-1.5 bg-neutral-900 p-1.5 rounded-xl border border-neutral-800">
+                <button onClick={() => setCreationType('camera')} className={`py-2 text-[10px] font-bold rounded-lg transition-all ${creationType === 'camera' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Camera</button>
+                <button onClick={() => setCreationType('audio')} className={`py-2 text-[10px] font-bold rounded-lg transition-all flex justify-center items-center gap-1 ${creationType === 'audio' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}><Mic className="w-3 h-3"/> Voice</button>
+                <button onClick={() => {setCreationType('text'); setPollOptions(['', ''])}} className={`py-2 text-[10px] font-bold rounded-lg transition-all ${creationType === 'text' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Text</button>
+                <button onClick={() => setCreationType('upload')} className={`py-2 text-[10px] font-bold rounded-lg transition-all ${creationType === 'upload' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>Upload</button>
+                <button onClick={() => setCreationType('gif')} className={`py-2 text-[10px] font-bold rounded-lg transition-all ${creationType === 'gif' ? (iAmVIP ? 'bg-yellow-600 text-black' : 'bg-blue-500 text-white') : 'text-neutral-400'}`}>GIFs</button>
               </div>
 
+              {/* Remix Preview Header */}
+              {remixPost && creationType === 'camera' && (
+                <div className="flex items-center gap-3 bg-neutral-900 p-2 rounded-xl border border-neutral-800 mb-2">
+                   <img src={remixPost.imageUrl} className="w-12 h-12 rounded object-cover" />
+                   <div className="text-xs text-neutral-300">Duetting with <b>@{remixPost.authorName}</b>. This will appear side-by-side!</div>
+                </div>
+              )}
+
+              {/* CAMERA STUDIO */}
               {creationType === 'camera' && (
                 <div className="relative rounded-3xl overflow-hidden bg-neutral-950 aspect-[4/5] border border-neutral-800 flex flex-col items-center justify-center shadow-2xl">
                   {cameraError && !isDemoMode ? (
@@ -1053,7 +1194,6 @@ export default function App() {
                           {!isDemoMode && <video ref={videoRef} onCanPlay={handleVideoCanPlay} autoPlay playsInline muted className={`w-full h-full object-cover ${isCameraReady ? 'opacity-100' : 'opacity-0'}`} style={{ transform: 'scaleX(-1)', filter: activeFilter.value }} />}
                           {isDemoMode && <canvas ref={demoCanvasRef} width="640" height="800" className="w-full h-full object-cover" style={{ filter: activeFilter.value }} />}
                           
-                          {/* Hardware Overlays */}
                           <div className="absolute top-4 right-4 flex flex-col gap-2 z-20">
                             {isDemoMode && EMOJIS.slice(0, 4).map(e => <button key={e} onClick={() => setDemoEmoji(e)} className="text-2xl bg-black/40 rounded-full p-1 border border-white/10 hover:scale-110">{e}</button>)}
                           </div>
@@ -1092,12 +1232,44 @@ export default function App() {
                 </div>
               )}
 
+              {/* VOICE STUDIO */}
+              {creationType === 'audio' && (
+                <div className="space-y-4">
+                  <div className={`aspect-[4/5] rounded-3xl bg-gradient-to-br ${textPostGradient} p-8 flex flex-col items-center justify-center relative border border-neutral-800 shadow-2xl`}>
+                    {!recordedAudio ? (
+                      <div className="flex flex-col items-center">
+                         <div className={`w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all ${isRecordingAudio ? 'bg-red-500 animate-pulse scale-110' : 'bg-black/40 border-4 border-white/20'}`}>
+                            <Mic className={`w-12 h-12 ${isRecordingAudio ? 'text-white' : 'text-white/60'}`} />
+                         </div>
+                         <div className="mt-8">
+                           {isRecordingAudio ? (
+                             <button onClick={stopAudioRecording} className="px-6 py-2 bg-white text-black font-bold rounded-full flex items-center gap-2 shadow-lg"><Square className="w-4 h-4 fill-black"/> Stop Recording</button>
+                           ) : (
+                             <button onClick={startAudioRecording} className="px-6 py-2 bg-red-500 text-white font-bold rounded-full flex items-center gap-2 shadow-lg shadow-red-500/30">Start Recording</button>
+                           )}
+                         </div>
+                         <p className="mt-4 text-xs text-white/50 font-bold uppercase tracking-widest">Max 15 Seconds</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center w-full">
+                         <Mic className="w-16 h-16 text-white mb-6 drop-shadow-xl" />
+                         <audio controls src={recordedAudio} className="w-full max-w-[250px]" />
+                         <button onClick={() => setRecordedAudio(null)} className="mt-6 text-xs font-bold text-red-200 hover:text-white underline">Discard & Record Again</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 justify-center p-2 bg-neutral-900 rounded-2xl border border-neutral-800">
+                    {GRADIENTS.map(grad => <button key={grad} onClick={() => setTextPostGradient(grad)} className={`w-8 h-8 rounded-full bg-gradient-to-br ${grad} border-2 ${textPostGradient === grad ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* TEXT STUDIO */}
               {creationType === 'text' && (
                 <div className="space-y-4">
                   <div className={`aspect-[4/5] rounded-3xl bg-gradient-to-br ${textPostGradient} p-8 flex flex-col items-center justify-center relative border border-neutral-800 shadow-2xl`}>
                     <textarea placeholder="Type something bold..." value={textPostContent} onChange={(e) => setTextPostContent(e.target.value)} maxLength={180} className="w-full bg-transparent border-none text-center font-black text-2xl md:text-4xl text-white placeholder-white/50 focus:outline-none resize-none overflow-hidden drop-shadow-xl mb-6" />
                     
-                    {/* Poll Setup */}
                     <div className="w-full space-y-2">
                       {pollOptions.map((opt, idx) => (
                         <div key={idx} className="flex gap-2 items-center">
@@ -1151,23 +1323,32 @@ export default function App() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><Type className="w-3.5 h-3.5"/> Caption & Tags</label>
                   <div className="relative">
-                    <input type="text" placeholder="Write a description or use #hashtags..." value={customCaption} onChange={(e) => setCustomCaption(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-4 pr-12 py-3 text-xs focus:outline-none focus:border-blue-500 text-white" />
+                    <input type="text" placeholder="Write a description, @mention friends, or use #hashtags..." value={customCaption} onChange={(e) => setCustomCaption(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-4 pr-12 py-3 text-xs focus:outline-none focus:border-blue-500 text-white" />
                     <button type="button" onClick={generateMagicCaption} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-neutral-900 hover:bg-neutral-800 text-blue-400 rounded-lg transition-colors" title="Magic Auto-Caption">
                       <Wand2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><Music className="w-3.5 h-3.5"/> Soundtrack Vibe</label>
-                  <select value={selectedSoundtrack} onChange={(e) => setSelectedSoundtrack(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-blue-500 text-white appearance-none">
-                    {SOUNDTRACKS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><Music className="w-3.5 h-3.5"/> Soundtrack</label>
+                    <select value={selectedSoundtrack} onChange={(e) => setSelectedSoundtrack(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-blue-500 text-white appearance-none">
+                      {SOUNDTRACKS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5"/> Location Tag</label>
+                    <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-blue-500 text-white appearance-none">
+                      {LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <button onClick={handleCreatePost} disabled={isPosting || (creationType==='camera'&&!capturedPhoto) || (creationType==='upload'&&!uploadFile) || (creationType==='gif'&&!selectedGif) || (creationType==='text'&&!textPostContent)} className={`w-full py-4 text-sm font-bold text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 transition-all ${isPostingToStories ? 'bg-gradient-to-r from-purple-600 to-pink-600 shadow-purple-500/20' : (iAmVIP ? 'bg-gradient-to-r from-yellow-500 to-yellow-700 shadow-yellow-600/20 hover:brightness-110 text-black' : 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/20 hover:brightness-110')}`}>
-                {isPosting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5" />} Publish to {isPostingToStories ? '24h Story' : 'World'}
+              <button onClick={handleCreatePost} disabled={isPosting || (creationType==='camera'&&!capturedPhoto) || (creationType==='upload'&&!uploadFile) || (creationType==='gif'&&!selectedGif) || (creationType==='text'&&!textPostContent) || (creationType==='audio'&&!recordedAudio)} className={`w-full py-4 text-sm font-bold text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 transition-all ${isPostingToStories ? 'bg-gradient-to-r from-purple-600 to-pink-600 shadow-purple-500/20' : (iAmVIP ? 'bg-gradient-to-r from-yellow-500 to-yellow-700 shadow-yellow-600/20 hover:brightness-110 text-black' : 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/20 hover:brightness-110')}`}>
+                {isPosting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5" />} Publish {remixPost ? 'Duet' : (isPostingToStories ? 'to 24h Story' : 'to World')}
               </button>
             </div>
           )}
@@ -1177,7 +1358,6 @@ export default function App() {
             <div className="max-w-4xl mx-auto p-4 flex flex-col h-[80vh] md:h-[90vh]">
               <h2 className={`text-xl font-extrabold tracking-wide mb-4 hidden md:block ${iAmVIP ? 'text-yellow-500' : 'text-blue-400'}`}>INBOX HUB</h2>
               
-              {/* Inbox Nav Toggle */}
               <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1.5 mb-4">
                 <button onClick={() => setInboxSubTab('activity')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${inboxSubTab === 'activity' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
                   <Bell className="w-4 h-4" /> Activity
@@ -1215,14 +1395,15 @@ export default function App() {
                   <div className="w-full md:w-64 bg-neutral-900 border border-neutral-800 rounded-2xl flex flex-col overflow-hidden shrink-0 h-1/3 md:h-full">
                     <h3 className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider p-4 pb-2 border-b border-neutral-800">Your Network</h3>
                     <div className="flex-1 overflow-y-auto p-2 scrollbar-hide space-y-1">
-                      {friends.length === 0 ? <p className="text-[11px] text-neutral-500 text-center mt-4">No friends yet!</p> : (
-                        allProfiles.filter(p => friends.includes(p.id)).map(friend => (
-                          <button key={friend.id} onClick={() => setActiveChatUser(friend)} className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${activeChatUser?.id === friend.id ? 'bg-blue-500/15 border border-blue-500/30' : 'hover:bg-neutral-800/60 border border-transparent'}`}>
-                            <span className="text-2xl bg-neutral-950 p-1 rounded-lg">{friend.emoji}</span>
-                            <span className="text-xs font-bold truncate text-neutral-200">{friend.username} {isVIP(friend.username) && '👑'}</span>
-                          </button>
-                        ))
-                      )}
+                      {displayFriends.map(friend => (
+                        <button key={friend.id} onClick={() => setActiveChatUser(friend)} className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${activeChatUser?.id === friend.id ? 'bg-blue-500/15 border border-blue-500/30' : 'hover:bg-neutral-800/60 border border-transparent'}`}>
+                          <span className="text-2xl bg-neutral-950 p-1 rounded-lg">{friend.emoji}</span>
+                          <div className="text-left overflow-hidden">
+                             <span className="text-xs font-bold truncate text-neutral-200 block">{friend.username} {isVIP(friend.username) && '👑'}</span>
+                             {friend.id === 'asteme_ai' && <span className="text-[9px] text-blue-400 uppercase tracking-widest font-bold">Always Online</span>}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -1239,7 +1420,7 @@ export default function App() {
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 scrollbar-hide">
                           {chatHistory.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
-                              <MessageSquare className="w-10 h-10 mb-2 text-blue-400" />
+                              {activeChatUser.id === 'asteme_ai' ? <Bot className="w-10 h-10 mb-2 text-blue-400" /> : <MessageSquare className="w-10 h-10 mb-2 text-blue-400" />}
                               <p className="text-xs">Say hi to {activeChatUser.username}!</p>
                             </div>
                           ) : (
@@ -1332,7 +1513,14 @@ export default function App() {
                     stories.filter(s => s.authorId === user?.uid).length === 0 ? <p className="col-span-2 text-xs text-neutral-600 p-4 text-center bg-neutral-900 rounded-xl">No posts published yet.</p> : 
                       stories.filter(s => s.authorId === user?.uid).map(story => (
                       <div key={story.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden aspect-[4/5] relative group shadow-lg">
-                        {story.imageUrl ? <img src={story.imageUrl} alt="My post" className="w-full h-full object-cover" /> : <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-4 flex items-center justify-center text-center text-[10px] font-bold leading-tight`}>{story.textContent}</div>}
+                        {story.remixData ? (
+                            <div className="flex w-full h-full">
+                               <div className="w-1/2 h-full"><img src={story.remixData.imageUrl} className="w-full h-full object-cover"/></div>
+                               <div className="w-1/2 h-full border-l border-neutral-800"><img src={story.imageUrl} className="w-full h-full object-cover"/></div>
+                            </div>
+                        ) : story.imageUrl ? <img src={story.imageUrl} alt="My post" className="w-full h-full object-cover" /> 
+                        : story.voiceNote ? <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} flex items-center justify-center`}><Mic className="w-8 h-8 text-white opacity-50"/></div>
+                        : <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-4 flex items-center justify-center text-center text-[10px] font-bold leading-tight`}>{story.textContent}</div>}
                         <button onClick={() => deleteStory(story.id)} className="absolute bottom-2 right-2 w-8 h-8 flex items-center justify-center bg-black/80 hover:bg-red-600 rounded-full text-white transition-colors backdrop-blur-sm">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1362,17 +1550,17 @@ export default function App() {
                         <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Total Likes</div>
                       </div>
                       <div className="bg-neutral-900 p-5 rounded-3xl border border-neutral-800 flex flex-col items-center justify-center text-center">
-                        <ImageIcon className="w-8 h-8 text-blue-400 mb-3" />
-                        <div className="text-4xl font-black text-white">{stories.filter(s=>s.authorId===user?.uid).length}</div>
-                        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Total Posts</div>
+                        <Gem className="w-8 h-8 text-cyan-400 mb-3" />
+                        <div className="text-4xl font-black text-white">{profile.diamondsEarned || 0}</div>
+                        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Diamonds Earned</div>
                       </div>
                     </div>
                     <div className="bg-neutral-900 p-5 rounded-3xl border border-neutral-800 flex items-center justify-between">
                        <div>
-                         <div className="text-2xl font-black text-white">{Math.floor(Math.random() * 500) + 120}</div>
-                         <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Profile Views This Week</div>
+                         <div className="text-2xl font-black text-white">{stories.filter(s=>s.authorId===user?.uid).length}</div>
+                         <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Total Posts Made</div>
                        </div>
-                       <Users className="w-10 h-10 text-purple-400 opacity-50" />
+                       <ImageIcon className="w-10 h-10 text-purple-400 opacity-50" />
                     </div>
                   </div>
                 )}
@@ -1413,12 +1601,12 @@ export default function App() {
             )}
             {activeStoryView[0].caption && (
               <div className="absolute bottom-16 left-4 right-4 text-center">
-                 <span className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold shadow-lg inline-block">{renderCaptionWithHashtags(activeStoryView[0].caption)}</span>
+                 <span className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold shadow-lg inline-block">{renderCaptionWithTags(activeStoryView[0].caption)}</span>
               </div>
             )}
           </div>
-          {/* Delete Story if Mine */}
-          {activeStoryView[0].authorId === user?.uid && (
+          {/* Delete Story if Mine or VIP */}
+          {(activeStoryView[0].authorId === user?.uid || iAmVIP) && (
             <button onClick={() => { deleteStory(activeStoryView[0].id, true); setActiveStoryView(null); }} className="absolute bottom-4 right-4 p-3 bg-red-600 rounded-full text-white shadow-xl z-10"><Trash2 className="w-5 h-5"/></button>
           )}
         </div>
@@ -1441,8 +1629,13 @@ export default function App() {
                  <span className="text-xl bg-neutral-950 p-1 rounded-lg border border-neutral-800">{focusedExplorePost.authorEmoji}</span>
                  <span className="text-xs font-bold">{focusedExplorePost.authorName}</span>
                </div>
-               <div className="flex gap-3">
+               <div className="flex gap-3 items-center">
                  <div className="flex items-center gap-1.5 text-pink-500 font-bold text-xs"><Heart className="w-4 h-4 fill-pink-500" /> {focusedExplorePost.likes?.length || 0}</div>
+                 {(focusedExplorePost.authorId === user?.uid || iAmVIP) && (
+                   <button onClick={() => { deleteStory(focusedExplorePost.id); setFocusedExplorePost(null); }} className="text-red-500 hover:text-red-400">
+                     <Trash2 className="w-4 h-4" />
+                   </button>
+                 )}
                </div>
              </div>
           </div>
@@ -1486,7 +1679,7 @@ export default function App() {
         <button onClick={() => setCurrentTab('shorts')} className={`flex flex-col items-center gap-1 p-2 transition-colors ${currentTab === 'shorts' ? (iAmVIP ? 'text-yellow-500' : 'text-blue-500') : 'text-neutral-500 hover:text-neutral-300'}`}>
           <Video className="w-6 h-6" />
         </button>
-        <button onClick={() => setCurrentTab('create')} className="flex flex-col items-center justify-center -mt-8">
+        <button onClick={() => { setCurrentTab('create'); setRemixPost(null); }} className="flex flex-col items-center justify-center -mt-8">
           <div className={`w-14 h-14 rounded-full flex items-center justify-center border-[3px] border-neutral-950 text-white transition-transform active:scale-95 ${iAmVIP ? 'bg-yellow-500 hover:bg-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.4)] text-black' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)]'}`}>
             <PlusCircle className="w-7 h-7" />
           </div>
