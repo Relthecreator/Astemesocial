@@ -3,13 +3,14 @@ import {
   Camera, Trash2, RefreshCcw, VideoOff, AlertCircle, Sparkles, Smile, Heart, 
   UserPlus, Users, Home, Send, X, UserCheck, Globe, MessageCircle, MessageSquare, 
   User, Search, PlusCircle, ImageIcon, Type, TrendingUp, Hash, Check,
-  Bell, Compass, Disc, BadgeCheck, Palette, Music, Play, Pause
+  Bell, Compass, Disc, BadgeCheck, Palette, Music, Play, Pause, Wand2, Flame,
+  Bookmark, Share
 } from 'lucide-react';
 
 // --- Firebase Initialization ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 
 // ==========================================
 // 1. Live Production Firebase Config
@@ -41,18 +42,18 @@ const FILTERS = [
 
 const EMOJIS = ['😎', '👻', '👾', '🦊', '🚀', '🌟', '🦄', '🦖', '🍕', '🎸', '🐱', '🍩', '🔮', '👽', '🔥', '💖'];
 
-// Actual playable audio tracks!
 const SOUNDTRACKS = [
   'None', 'Lofi Chill ☕️', 'Synthwave 🌃', 'Pop Anthem 🎤', 'Acoustic Vibes 🎸', 'Trap Beat 🎧', 'Cyberpunk 🦾'
 ];
 
+// Swapped to reliable, hotlink-friendly testing audio tracks
 const AUDIO_MAP = {
-  'Lofi Chill ☕️': 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
-  'Synthwave 🌃': 'https://cdn.pixabay.com/download/audio/2022/12/22/audio_fb41183c50.mp3',
-  'Pop Anthem 🎤': 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3',
-  'Acoustic Vibes 🎸': 'https://cdn.pixabay.com/download/audio/2021/11/25/audio_91b3bb1023.mp3',
-  'Trap Beat 🎧': 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_271c6eb3db.mp3',
-  'Cyberpunk 🦾': 'https://cdn.pixabay.com/download/audio/2022/10/14/audio_99392e22c0.mp3'
+  'Lofi Chill ☕️': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+  'Synthwave 🌃': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+  'Pop Anthem 🎤': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+  'Acoustic Vibes 🎸': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+  'Trap Beat 🎧': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
+  'Cyberpunk 🦾': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3'
 };
 
 const GRADIENTS = [
@@ -67,6 +68,13 @@ const CURATED_GIFS = [
   { name: 'Laser Eyes', url: 'https://media.giphy.com/media/26n6WywJyum5o9fWM/giphy.gif' }
 ];
 
+const MAGIC_CAPTIONS = [
+  "Just vibing ✨ #vibes", "Main character energy 👑 #maincharacter", "No cap, this is a masterpiece 🎨",
+  "Living my best life 🚀 #blessed", "Catch flights, not feelings ✈️", "Built different 🦾 #gym",
+  "Vibe check passed ✅", "Entering my villain era 😈", "Stay hydrated 💧 #health",
+  "Out of office 🌴", "Too glam to give a damn 💅", "W ✨ #winning"
+];
+
 const timeAgo = (timestamp) => {
   if (!timestamp) return 'Just now';
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -78,41 +86,39 @@ const timeAgo = (timestamp) => {
   return `${Math.floor(hours / 24)}d ago`;
 };
 
-// Vibe Engine: Floating Particle Component
+// --- Sub-components ---
 const ParticleBurst = ({ particles }) => (
   <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
     {particles.map(p => (
       <div 
-        key={p.id} 
-        className="absolute text-xl animate-float-up opacity-0"
-        style={{
-          left: `${p.x}px`,
-          top: `${p.y}px`,
-          '--tx': `${p.vx}px`,
-          '--ty': `${p.vy}px`
-        }}
+        key={p.id} className="absolute text-xl animate-float-up opacity-0"
+        style={{ left: `${p.x}px`, top: `${p.y}px`, '--tx': `${p.vx}px`, '--ty': `${p.vy}px` }}
       >
-        💖
+        {p.emoji || '💖'}
       </div>
     ))}
   </div>
 );
 
 export default function App() {
-  // --- Auth & Base State ---
+  // --- Auth & Profile State ---
   const [user, setUser] = useState(null);
   const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [profile, setProfile] = useState(null);
   
-  // --- Navigation ---
+  // --- Navigation & View State ---
   const [currentTab, setCurrentTab] = useState('feed'); 
   const [inboxSubTab, setInboxSubTab] = useState('activity'); 
+  const [profileSubTab, setProfileSubTab] = useState('posts'); 
   const [feedFilter, setFeedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeStoryView, setActiveStoryView] = useState(null); // For full-screen 24h stories
   
   // --- Data Feeds ---
-  const [stories, setStories] = useState([]);
+  const [stories, setStories] = useState([]);      // Main Feed Posts
+  const [fleets, setFleets] = useState([]);        // 24 Hour Stories
   const [friends, setFriends] = useState([]);
+  const [bookmarks, setBookmarks] = useState([]);  // User's saved posts
   const [comments, setComments] = useState([]);
   const [messages, setMessages] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -120,6 +126,7 @@ export default function App() {
 
   // --- Creator States ---
   const [creationType, setCreationType] = useState('camera'); 
+  const [isPostingToStories, setIsPostingToStories] = useState(false); // Toggle for 24h story
   const [textPostContent, setTextPostContent] = useState('');
   const [textPostGradient, setTextPostGradient] = useState(GRADIENTS[0]);
   const [uploadFile, setUploadFile] = useState(null);
@@ -132,7 +139,6 @@ export default function App() {
   const canvasRef = useRef(null);
   const demoCanvasRef = useRef(null);
   const animationFrameRef = useRef(null);
-  
   const [stream, setStream] = useState(null);
   const [cameraError, setCameraError] = useState(null);
   const [activeFilter, setActiveFilter] = useState(FILTERS[0]);
@@ -144,12 +150,12 @@ export default function App() {
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [isPosting, setIsPosting] = useState(false);
 
-  // --- Vibe Engine States (Music & Particles) ---
+  // --- Interactive States ---
   const [particles, setParticles] = useState([]);
   const [currentAudio, setCurrentAudio] = useState({ url: null, postId: null });
   const audioRef = useRef(null);
 
-  // --- UI & Chat States ---
+  // --- Settings & Chat ---
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editEmoji, setEditEmoji] = useState('😎');
@@ -163,7 +169,7 @@ export default function App() {
   const chatEndRef = useRef(null);
   const prevMessagesLength = useRef(0);
 
-  // --- Helper Notify Engine ---
+  // Helper Notify Engine
   const notify = useCallback((text) => {
     const newNotif = { id: Date.now().toString(), text, time: Date.now(), read: false };
     setNotifications(prev => [newNotif, ...prev]);
@@ -171,12 +177,9 @@ export default function App() {
 
   const markNotifsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
 
-  // Handle Video Element Ready State
-  const handleVideoCanPlay = () => {
-    setIsCameraReady(true);
-  };
+  const handleVideoCanPlay = () => setIsCameraReady(true);
 
-  // --- Firebase Authentication ---
+  // --- Firebase Auth ---
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -188,52 +191,44 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // --- Data Listeners ---
+  // --- Global Data Syncer ---
   useEffect(() => {
     if (!user) return;
     
-    // Load Profile
     const unsubProf = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         setProfile(data);
-        setEditName(data.username || '');
-        setEditBio(data.bio || '');
-        setEditEmoji(data.emoji || '😎');
+        setEditName(data.username || ''); setEditBio(data.bio || ''); setEditEmoji(data.emoji || '😎');
       } else {
-        const defaultProfile = { 
-          username: `User_${Math.floor(Math.random() * 9000) + 1000}`, 
-          emoji: '😎', bio: 'Ready to post!', createdAt: Date.now(), isVerified: true 
-        };
+        const defaultProfile = { username: `User_${Math.floor(Math.random() * 9000) + 1000}`, emoji: '😎', bio: 'Ready to post!', createdAt: Date.now(), isVerified: true };
         setProfile(defaultProfile);
         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), defaultProfile);
       }
     });
 
-    // Load Feeds
     const unsubStories = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), (snap) => setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt)));
+    const unsubFleets = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'fleets'), (snap) => {
+      const allFleets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Auto expire fleets older than 24 hours locally
+      const validFleets = allFleets.filter(f => Date.now() - f.createdAt < 24 * 60 * 60 * 1000).sort((a,b) => b.createdAt - a.createdAt);
+      setFleets(validFleets);
+    });
+    
     const unsubAllProfiles = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'profiles'), (snap) => setAllProfiles(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubFriends = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'friends'), (snap) => setFriends(snap.docs.map(d => d.id)));
+    const unsubBookmarks = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'bookmarks'), (snap) => setBookmarks(snap.docs.map(d => d.id)));
     const unsubComments = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'comments'), (snap) => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt - b.createdAt)));
-    
-    // Load Messages & Check for NEW messages to trigger notifications
-    const unsubMessages = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), (snap) => {
-      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt - b.createdAt);
-      setMessages(msgs);
-    });
+    const unsubMessages = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), (snap) => setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.createdAt - b.createdAt)));
 
-    return () => { unsubProf(); unsubStories(); unsubAllProfiles(); unsubFriends(); unsubComments(); unsubMessages(); };
+    return () => { unsubProf(); unsubStories(); unsubFleets(); unsubAllProfiles(); unsubFriends(); unsubBookmarks(); unsubComments(); unsubMessages(); };
   }, [user]);
 
   // Handle New Message Notifications & Auto-Scroll
   useEffect(() => {
     if (messages.length > prevMessagesLength.current && prevMessagesLength.current !== 0) {
       const newMsg = messages[messages.length - 1];
-      // If we received a message and we aren't currently chatting with them
-      if (newMsg.receiverId === user?.uid && activeChatUser?.id !== newMsg.senderId) {
-        notify(`💬 New message from ${newMsg.senderName}!`);
-      }
-      // Auto Scroll to bottom
+      if (newMsg.receiverId === user?.uid && activeChatUser?.id !== newMsg.senderId) notify(`💬 New message from ${newMsg.senderName}!`);
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
     prevMessagesLength.current = messages.length;
@@ -249,9 +244,7 @@ export default function App() {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: false });
       setStream(mediaStream);
       if (videoRef.current) videoRef.current.srcObject = mediaStream;
-    } catch (err) {
-      setCameraError('No webcam detected. Click the Star icon to run Demo mode!');
-    }
+    } catch (err) { setCameraError('No webcam detected. Click the Star icon to run Demo mode!'); }
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -273,11 +266,8 @@ export default function App() {
 
     const renderDemo = () => {
       if (!ctx || !canvas) return;
-      angle += 0.02;
-      ctx.fillStyle = `rgb(15, 23, 42)`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
-      ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(canvas.width / 2, canvas.height / 2, 110, 0, Math.PI * 2); ctx.stroke();
+      angle += 0.02; ctx.fillStyle = `rgb(15, 23, 42)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(canvas.width / 2, canvas.height / 2, 110, 0, Math.PI * 2); ctx.stroke();
       emojiX += dx; emojiY += dy;
       if (emojiX < 60 || emojiX > canvas.width - 60) dx = -dx;
       if (emojiY < 60 || emojiY > canvas.height - 60) dy = -dy;
@@ -310,9 +300,8 @@ export default function App() {
       ctx.filter = activeFilter.value; ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     } else return;
 
-    // HIGH QUALITY COMPRESSION FIX (1080px max, 85% quality)
     const max_dim = 1080; let w = canvas.width; let h = canvas.height;
-    if (w > max_dim || h > max_dim) { const scale = Math.min(max_dim / w, max_dim / h); w = Math.round(w * scale); h = Math.round(w * scale); }
+    if (w > max_dim || h > max_dim) { const scale = Math.min(max_dim / w, max_dim / h); w = Math.round(w * scale); h = Math.round(h * scale); }
     const compCanvas = document.createElement('canvas'); compCanvas.width = w; compCanvas.height = h;
     compCanvas.getContext('2d').drawImage(canvas, 0, 0, w, h);
     setIsFlashing(true); setTimeout(() => setIsFlashing(false), 150);
@@ -322,14 +311,10 @@ export default function App() {
   // --- Sticker Engine ---
   const applyStickerToPhoto = (emoji) => {
     if (!capturedPhoto) return;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
+    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
     img.onload = () => {
-      canvas.width = img.width; canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      ctx.font = `${Math.floor(canvas.width / 4)}px Arial`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      canvas.width = img.width; canvas.height = img.height; ctx.drawImage(img, 0, 0);
+      ctx.font = `${Math.floor(canvas.width / 4)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       const rx = canvas.width/2 + (Math.random() * canvas.width * 0.5 - canvas.width * 0.25);
       const ry = canvas.height/2 + (Math.random() * canvas.height * 0.5 - canvas.height * 0.25);
       const rot = (Math.random() - 0.5) * 0.8;
@@ -348,8 +333,7 @@ export default function App() {
         const canvas = document.createElement('canvas');
         const max_dim = 1080; let w = img.width; let h = img.height;
         if (w > max_dim || h > max_dim) { const scale = Math.min(max_dim / w, max_dim / h); w = Math.round(w * scale); h = Math.round(h * scale); }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         setUploadFile(canvas.toDataURL('image/jpeg', 0.85));
       };
       img.src = event.target.result;
@@ -357,6 +341,21 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const generateMagicCaption = (e) => {
+    e.preventDefault();
+    setCustomCaption(MAGIC_CAPTIONS[Math.floor(Math.random() * MAGIC_CAPTIONS.length)]);
+    if (e && e.clientX) {
+      const rect = e.target.getBoundingClientRect();
+      const newParticles = Array.from({length: 5}).map((_, i) => ({
+         id: Date.now() + i + 'sparkle', x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+         vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji: '✨'
+      }));
+      setParticles(prev => [...prev, ...newParticles]);
+      setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
+    }
+  };
+
+  // The Post Publisher (Supports regular posts & 24h Stories)
   const handleCreatePost = async () => {
     if (!user || !profile) return;
     setIsPosting(true);
@@ -375,12 +374,21 @@ export default function App() {
     };
 
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), payload);
-      setCapturedPhoto(null); setUploadFile(null); setSelectedGif(null); setTextPostContent(''); setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]);
+      // Branch: Post to Fleets (24h) or Main Feed
+      if (isPostingToStories) {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'fleets'), payload);
+        notify("✨ Added to your 24h Story!");
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'stories'), payload);
+        notify("🚀 Published to Global Feed!");
+      }
+      setCapturedPhoto(null); setUploadFile(null); setSelectedGif(null); setTextPostContent(''); setCustomCaption(''); setSelectedSoundtrack(SOUNDTRACKS[0]); setIsPostingToStories(false);
       setCurrentTab('feed');
-    } catch (err) { console.error("Posting error:", err); alert("Error publishing to database."); } finally { setIsPosting(false); }
+    } catch (err) { console.error("Posting error:", err); alert("Error publishing to database."); } 
+    finally { setIsPosting(false); }
   };
 
+  // Features: Comments, Likes, Bookmarks, and Friends
   const handlePostComment = async () => {
     if (!user || !profile || !newCommentText.trim() || !activeCommentPost) return;
     const payload = { storyId: activeCommentPost.id, authorId: user.uid, authorName: profile.username, authorEmoji: profile.emoji, text: newCommentText.trim(), createdAt: Date.now() };
@@ -394,30 +402,20 @@ export default function App() {
   const handleSendDM = async () => {
     if (!user || !profile || !newMessageText.trim() || !activeChatUser) return;
     const payload = { senderId: user.uid, senderName: profile.username, senderEmoji: profile.emoji, receiverId: activeChatUser.id, text: newMessageText.trim(), createdAt: Date.now() };
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), payload);
-      setNewMessageText('');
-    } catch (err) { console.error(err); }
+    try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), payload); setNewMessageText(''); } catch (err) { console.error(err); }
   };
 
-  // Trigger Particle System and Like
   const toggleLike = async (story, e) => {
     if (!user) return;
-    
-    // Trigger Vibe Engine Particles
     if (e && e.clientX) {
       const rect = e.target.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
       const newParticles = Array.from({length: 8}).map((_, i) => ({
-         id: Date.now() + i, x, y,
-         vx: (Math.random() - 0.5) * 80,
-         vy: -(Math.random() * 80 + 40)
+         id: Date.now() + i, x: rect.left + rect.width/2, y: rect.top + rect.height/2,
+         vx: (Math.random() - 0.5) * 80, vy: -(Math.random() * 80 + 40), emoji: '💖'
       }));
       setParticles(prev => [...prev, ...newParticles]);
       setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.find(n => n.id === p.id))), 1000);
     }
-
     const hasLiked = story.likes?.includes(user.uid);
     const newLikes = hasLiked ? (story.likes || []).filter(id => id !== user.uid) : [...(story.likes || []), user.uid];
     try {
@@ -426,16 +424,31 @@ export default function App() {
     } catch (err) { console.error(err); }
   };
 
-  // Music Player Toggle
+  const toggleBookmark = async (storyId) => {
+    if (!user) return;
+    const bookmarkRef = doc(db, 'artifacts', appId, 'users', user.uid, 'bookmarks', storyId);
+    try {
+      if (bookmarks.includes(storyId)) { await deleteDoc(bookmarkRef); notify("Removed from saved."); }
+      else { await setDoc(bookmarkRef, { savedAt: Date.now() }); notify("🔖 Post saved to your profile!"); }
+    } catch (err) { console.error(err); }
+  };
+
   const toggleAudio = (post) => {
     if (!AUDIO_MAP[post.soundtrack]) return;
-    
-    if (currentAudio.postId === post.id) {
-      audioRef.current?.pause();
-      setCurrentAudio({ url: null, postId: null });
-    } else {
-      setCurrentAudio({ url: AUDIO_MAP[post.soundtrack], postId: post.id });
-      setTimeout(() => audioRef.current?.play(), 50);
+    if (currentAudio.postId === post.id) { 
+      audioRef.current?.pause(); 
+      setCurrentAudio({ url: null, postId: null }); 
+    } else { 
+      setCurrentAudio({ url: AUDIO_MAP[post.soundtrack], postId: post.id }); 
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.play().catch(err => {
+            console.error("Audio playback error:", err);
+            notify("⚠️ Soundtrack failed to load or was blocked.");
+            setCurrentAudio({ url: null, postId: null });
+          });
+        }
+      }, 50); 
     }
   };
 
@@ -443,22 +456,38 @@ export default function App() {
     if (!user || targetId === user.uid) return;
     try {
       const friendRef = doc(db, 'artifacts', appId, 'users', user.uid, 'friends', targetId);
-      if (friends.includes(targetId)) await deleteDoc(friendRef); 
-      else await setDoc(friendRef, { addedAt: Date.now() });
+      if (friends.includes(targetId)) await deleteDoc(friendRef); else await setDoc(friendRef, { addedAt: Date.now() });
     } catch (err) { console.error(err); }
+  };
+
+  const shareToClipboard = (textToShare) => {
+    navigator.clipboard.writeText(`${window.location.href}#${textToShare}`).then(() => notify("🔗 Link copied to clipboard!"));
   };
 
   const handleUpdateProfile = async () => {
     if (!user || !editName.trim()) return;
     setIsUpdatingProfile(true);
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { username: editName.trim(), emoji: editEmoji, bio: editBio.trim() });
-    } catch (err) { console.error(err); } finally { setIsUpdatingProfile(false); }
+    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), { username: editName.trim(), emoji: editEmoji, bio: editBio.trim() }); } 
+    catch (err) { console.error(err); } finally { setIsUpdatingProfile(false); notify("Profile Updated!"); }
   };
 
-  const deleteStory = async (storyId) => {
+  const deleteStory = async (storyId, isFleet = false) => {
     if (!user) return;
-    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stories', storyId)); } catch (err) { console.error(err); }
+    const colName = isFleet ? 'fleets' : 'stories';
+    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', colName, storyId)); notify("Deleted."); } catch (err) { console.error(err); }
+  };
+
+  // --- Rendering Helpers ---
+  // Transforms #hashtags into clickable blue text
+  const renderCaptionWithHashtags = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(#\w+)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('#')) {
+        return <span key={i} onClick={(e) => { e.stopPropagation(); setSearchQuery(part); setCurrentTab('feed'); }} className="text-blue-400 font-semibold cursor-pointer hover:underline">{part}</span>;
+      }
+      return part;
+    });
   };
 
   const filteredStories = stories.filter(story => {
@@ -473,6 +502,7 @@ export default function App() {
   const chatHistory = messages.filter(m => (m.senderId === user?.uid && m.receiverId === activeChatUser?.id) || (m.senderId === activeChatUser?.id && m.receiverId === user?.uid));
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Render Loader
   if (isAuthenticating) {
     return (
       <div className="h-screen bg-neutral-950 text-white flex items-center justify-center font-sans">
@@ -488,14 +518,14 @@ export default function App() {
     <div className="h-screen bg-neutral-950 text-white font-sans flex flex-col md:flex-row overflow-hidden relative selection:bg-blue-500/30">
       
       {/* Global Audio Player & Particle Engine */}
-      <audio ref={audioRef} src={currentAudio.url} onEnded={() => setCurrentAudio({ url: null, postId: null })} loop />
+      <audio ref={audioRef} src={currentAudio.url || ''} onEnded={() => setCurrentAudio({ url: null, postId: null })} loop />
       <ParticleBurst particles={particles} />
 
       {/* ===== SIDEBAR NAVIGATION ===== */}
       <nav className="hidden md:flex flex-col w-64 bg-neutral-900 border-r border-neutral-800 p-4 shrink-0 z-20">
         <div className="flex items-center gap-2 mb-8 px-2 mt-2">
           <Camera className="w-8 h-8 text-blue-500" />
-          <span className="font-black text-xl tracking-wider text-blue-400">PHOTO HUB</span>
+          <span className="font-black text-xl tracking-wider text-blue-400">ASTEME SOCIAL</span>
         </div>
 
         {profile && (
@@ -525,7 +555,7 @@ export default function App() {
             {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse">{unreadCount}</span>}
           </button>
           <button onClick={() => setCurrentTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentTab === 'profile' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}>
-            <User className="w-5 h-5" /> Profile Settings
+            <User className="w-5 h-5" /> Profile & Saved
           </button>
         </div>
       </nav>
@@ -537,7 +567,7 @@ export default function App() {
         <div className="md:hidden flex justify-between items-center px-4 py-3 bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800 shrink-0 z-30 sticky top-0">
           <div className="flex items-center gap-1.5">
             <Camera className="w-6 h-6 text-blue-500" />
-            <span className="font-black text-sm tracking-widest text-blue-400">PHOTO HUB</span>
+            <span className="font-black text-sm tracking-widest text-blue-400">ASTEME SOCIAL</span>
           </div>
           <button onClick={() => { setCurrentTab('inbox'); markNotifsRead(); }} className="relative text-neutral-300">
             <Bell className="w-6 h-6" />
@@ -552,10 +582,12 @@ export default function App() {
           {currentTab === 'feed' && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
               
+              {/* Search & Filter Header */}
               <div className="flex justify-between items-center bg-neutral-900/60 p-2 rounded-xl border border-neutral-800 backdrop-blur-sm">
                 <div className="relative flex-1">
                   <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-2.5" />
-                  <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-none pl-9 pr-4 py-2 text-sm focus:outline-none text-neutral-200" />
+                  <input type="text" placeholder="Search hashtags or friends..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-none pl-9 pr-4 py-2 text-sm focus:outline-none text-neutral-200" />
+                  {searchQuery && <button onClick={()=>setSearchQuery('')} className="absolute right-2 top-2.5 text-neutral-500"><X className="w-4 h-4"/></button>}
                 </div>
                 <div className="flex bg-neutral-950 rounded-lg p-1 ml-2 border border-neutral-800">
                   <button onClick={() => setFeedFilter('all')} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${feedFilter === 'all' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500'}`}>Global</button>
@@ -563,19 +595,51 @@ export default function App() {
                 </div>
               </div>
 
+              {/* 24-HOUR STORIES (FLEETS) HORIZONTAL BAR */}
+              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide items-center">
+                <button onClick={() => { setCurrentTab('create'); setIsPostingToStories(true); }} className="flex flex-col items-center gap-1.5 min-w-[72px] shrink-0 group">
+                  <div className="w-16 h-16 rounded-full border-2 border-dashed border-neutral-600 bg-neutral-900 flex items-center justify-center group-hover:border-blue-500 group-hover:bg-neutral-800 transition-colors relative">
+                    <PlusCircle className="text-neutral-400 group-hover:text-blue-400 w-6 h-6"/>
+                    <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full w-5 h-5 flex items-center justify-center text-white font-bold text-[10px] shadow-sm border border-neutral-900">+</div>
+                  </div>
+                  <span className="text-[10px] font-bold text-neutral-400">Add Story</span>
+                </button>
+
+                {/* Render active 24h stories */}
+                {Array.from(new Set(fleets.map(f => f.authorId))).map(authorId => {
+                  const userFleets = fleets.filter(f => f.authorId === authorId);
+                  const latest = userFleets[0];
+                  if (!latest) return null;
+                  const isMine = authorId === user?.uid;
+                  return (
+                    <button key={authorId} onClick={() => setActiveStoryView(userFleets)} className="flex flex-col items-center gap-1.5 min-w-[72px] shrink-0 group">
+                      <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-pink-500 via-purple-500 to-blue-500 group-hover:scale-105 transition-transform">
+                        <div className="w-full h-full rounded-full bg-neutral-950 flex items-center justify-center text-3xl overflow-hidden border-2 border-neutral-900">
+                          {latest.imageUrl ? <img src={latest.imageUrl} className="w-full h-full object-cover"/> : latest.authorEmoji}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-neutral-200 truncate w-16 text-center">{isMine ? 'You' : latest.authorName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* MAIN POST FEED */}
               {filteredStories.length === 0 ? (
-                <div className="py-32 text-center opacity-40">
+                <div className="py-20 text-center opacity-40">
                   <Smile className="w-16 h-16 mx-auto mb-4 text-neutral-600" />
-                  <p className="text-sm font-medium">No stories found. Start creating!</p>
+                  <p className="text-sm font-medium">No posts found. Change your filter or start creating!</p>
                 </div>
               ) : (
                 filteredStories.map((story) => {
                   const isMine = story.authorId === user?.uid;
                   const isFriend = friends.includes(story.authorId);
                   const hasLiked = story.likes?.includes(user?.uid);
+                  const isBookmarked = bookmarks.includes(story.id);
                   const postComments = comments.filter(c => c.storyId === story.id);
                   const profileData = allProfiles.find(p => p.id === story.authorId) || {};
                   const isPlaying = currentAudio.postId === story.id;
+                  const isTrending = story.likes?.length >= 3;
                   
                   return (
                     <article key={story.id} className={`bg-neutral-900 border ${isPlaying ? 'border-blue-500 shadow-xl shadow-blue-500/20' : 'border-neutral-800/80'} rounded-3xl overflow-hidden transition-all duration-300`}>
@@ -588,8 +652,9 @@ export default function App() {
                               {profileData.isVerified && <BadgeCheck className="w-4 h-4 text-blue-500" />}
                               {isMine && <span className="text-[9px] bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-400 font-bold tracking-wide">YOU</span>}
                             </div>
-                            <div className="text-[10px] text-neutral-500 flex items-center gap-2">
+                            <div className="text-[10px] text-neutral-500 flex items-center gap-2 mt-0.5">
                               {timeAgo(story.createdAt)}
+                              {isTrending && <span className="flex items-center gap-1 text-[9px] bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse"><Flame className="w-3 h-3" /> Trending</span>}
                             </div>
                           </div>
                         </div>
@@ -609,7 +674,7 @@ export default function App() {
                           <img src={story.imageUrl} alt="Uploaded Post" className="w-full h-full object-cover" />
                         ) : (
                           <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-8 flex items-center justify-center text-center`}>
-                            <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl">{story.textContent}</p>
+                            <p className="text-2xl md:text-3xl font-extrabold tracking-wide text-white drop-shadow-xl">{renderCaptionWithHashtags(story.textContent)}</p>
                           </div>
                         )}
                         
@@ -637,17 +702,28 @@ export default function App() {
                           </div>
                         )}
 
-                        <div className="flex gap-5 mb-3 relative">
-                          <button onClick={(e) => toggleLike(story, e)} className={`flex items-center gap-1.5 text-sm font-bold transition-transform hover:scale-110 ${hasLiked ? 'text-pink-500' : 'text-neutral-300'}`}>
-                            <Heart className={`w-6 h-6 ${hasLiked ? 'fill-pink-500' : ''}`} /> {story.likes?.length || 0}
-                          </button>
-                          <button onClick={() => setActiveCommentPost(story)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-white transition-transform hover:scale-110">
-                            <MessageCircle className="w-6 h-6" /> {postComments.length}
+                        <div className="flex justify-between mb-3 relative items-center">
+                          <div className="flex gap-4">
+                            <button onClick={(e) => toggleLike(story, e)} className={`flex items-center gap-1.5 text-sm font-bold transition-transform hover:scale-110 ${hasLiked ? 'text-pink-500' : 'text-neutral-300'}`}>
+                              <Heart className={`w-6 h-6 ${hasLiked ? 'fill-pink-500' : ''}`} /> {story.likes?.length || 0}
+                            </button>
+                            <button onClick={() => setActiveCommentPost(story)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-white transition-transform hover:scale-110">
+                              <MessageCircle className="w-6 h-6" /> {postComments.length}
+                            </button>
+                            <button onClick={() => shareToClipboard(story.id)} className="flex items-center gap-1.5 text-sm font-bold text-neutral-300 hover:text-white transition-transform hover:scale-110">
+                              <Share className="w-5 h-5" />
+                            </button>
+                          </div>
+                          
+                          {/* Bookmark Button */}
+                          <button onClick={() => toggleBookmark(story.id)} className={`transition-transform hover:scale-110 ${isBookmarked ? 'text-yellow-500' : 'text-neutral-400 hover:text-white'}`}>
+                             <Bookmark className={`w-6 h-6 ${isBookmarked ? 'fill-yellow-500' : ''}`} />
                           </button>
                         </div>
+
                         {story.caption && (
                           <div className="text-xs text-neutral-200">
-                            <span className="font-bold mr-2">{story.authorName}</span>{story.caption}
+                            <span className="font-bold mr-2">{story.authorName}</span>{renderCaptionWithHashtags(story.caption)}
                           </div>
                         )}
                       </div>
@@ -683,7 +759,17 @@ export default function App() {
           {/* TAB 3: POST CREATION STUDIO */}
           {currentTab === 'create' && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
-              <h2 className="text-xl font-extrabold tracking-wide text-blue-400">CREATIVE STUDIO</h2>
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-extrabold tracking-wide text-blue-400">CREATIVE STUDIO</h2>
+                
+                {/* 24 Hour Story Toggle */}
+                <button 
+                  onClick={() => setIsPostingToStories(!isPostingToStories)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all ${isPostingToStories ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-neutral-700 bg-neutral-800 text-neutral-400'}`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> {isPostingToStories ? 'Posting to 24h Story' : 'Posting to Feed'}
+                </button>
+              </div>
               
               <div className="grid grid-cols-4 gap-1.5 bg-neutral-900 p-1.5 rounded-xl border border-neutral-800">
                 <button onClick={() => setCreationType('camera')} className={`py-2 text-[11px] font-bold rounded-lg transition-all ${creationType === 'camera' ? 'bg-blue-500 text-white' : 'text-neutral-400'}`}>Camera</button>
@@ -795,8 +881,13 @@ export default function App() {
 
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><Type className="w-3.5 h-3.5"/> Caption</label>
-                  <input type="text" placeholder="Write a description..." value={customCaption} onChange={(e) => setCustomCaption(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-blue-500 text-white" />
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><Type className="w-3.5 h-3.5"/> Caption & Tags</label>
+                  <div className="relative">
+                    <input type="text" placeholder="Write a description or use #hashtags..." value={customCaption} onChange={(e) => setCustomCaption(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-4 pr-12 py-3 text-xs focus:outline-none focus:border-blue-500 text-white" />
+                    <button type="button" onClick={generateMagicCaption} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-neutral-900 hover:bg-neutral-800 text-blue-400 rounded-lg transition-colors" title="Magic Auto-Caption">
+                      <Wand2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -807,8 +898,8 @@ export default function App() {
                 </div>
               </div>
 
-              <button onClick={handleCreatePost} disabled={isPosting || (creationType==='camera'&&!capturedPhoto) || (creationType==='upload'&&!uploadFile) || (creationType==='gif'&&!selectedGif) || (creationType==='text'&&!textPostContent)} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-110 text-sm font-bold text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 disabled:opacity-50 transition-all">
-                {isPosting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5" />} Publish to World
+              <button onClick={handleCreatePost} disabled={isPosting || (creationType==='camera'&&!capturedPhoto) || (creationType==='upload'&&!uploadFile) || (creationType==='gif'&&!selectedGif) || (creationType==='text'&&!textPostContent)} className={`w-full py-4 text-sm font-bold text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 transition-all ${isPostingToStories ? 'bg-gradient-to-r from-purple-600 to-pink-600 shadow-purple-500/20' : 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/20 hover:brightness-110'}`}>
+                {isPosting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5" />} Publish to {isPostingToStories ? '24h Story' : 'World'}
               </button>
             </div>
           )}
@@ -896,7 +987,6 @@ export default function App() {
                               )
                             })
                           )}
-                          {/* Invisible anchor to trigger auto-scroll to the bottom of the chat */}
                           <div ref={chatEndRef} />
                         </div>
                         <div className="p-3 border-t border-neutral-800 bg-neutral-950/60 flex gap-2">
@@ -916,7 +1006,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 5: PROFILE SETTINGS */}
+          {/* TAB 5: PROFILE & SAVED POSTS */}
           {currentTab === 'profile' && profile && (
             <div className="max-w-xl mx-auto p-4 space-y-6 pb-24 md:pb-6">
               <h2 className="text-xl font-extrabold tracking-wide text-blue-400">YOUR ACCOUNT</h2>
@@ -945,18 +1035,39 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="space-y-3 pt-4">
-                <h3 className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5"><ImageIcon className="w-4 h-4"/> Your Portfolio</h3>
+              {/* Profile Sub-tabs */}
+              <div className="pt-4 space-y-4">
+                <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1.5">
+                  <button onClick={() => setProfileSubTab('posts')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${profileSubTab === 'posts' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
+                    <ImageIcon className="w-4 h-4" /> My Posts
+                  </button>
+                  <button onClick={() => setProfileSubTab('saved')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${profileSubTab === 'saved' ? 'bg-neutral-800 text-white shadow' : 'text-neutral-500'}`}>
+                    <Bookmark className="w-4 h-4" /> Saved
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
-                  {stories.filter(s => s.authorId === user?.uid).length === 0 ? <p className="col-span-2 text-xs text-neutral-600 p-4 text-center bg-neutral-900 rounded-xl">No posts published yet.</p> : 
-                    stories.filter(s => s.authorId === user?.uid).map(story => (
-                    <div key={story.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden aspect-[4/5] relative group shadow-lg">
-                      {story.imageUrl ? <img src={story.imageUrl} alt="My post" className="w-full h-full object-cover" /> : <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-4 flex items-center justify-center text-center text-[10px] font-bold leading-tight`}>{story.textContent}</div>}
-                      <button onClick={() => deleteStory(story.id)} className="absolute bottom-2 right-2 w-8 h-8 flex items-center justify-center bg-black/80 hover:bg-red-600 rounded-full text-white transition-colors backdrop-blur-sm">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                  {profileSubTab === 'posts' && (
+                    stories.filter(s => s.authorId === user?.uid).length === 0 ? <p className="col-span-2 text-xs text-neutral-600 p-4 text-center bg-neutral-900 rounded-xl">No posts published yet.</p> : 
+                      stories.filter(s => s.authorId === user?.uid).map(story => (
+                      <div key={story.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden aspect-[4/5] relative group shadow-lg">
+                        {story.imageUrl ? <img src={story.imageUrl} alt="My post" className="w-full h-full object-cover" /> : <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-4 flex items-center justify-center text-center text-[10px] font-bold leading-tight`}>{story.textContent}</div>}
+                        <button onClick={() => deleteStory(story.id)} className="absolute bottom-2 right-2 w-8 h-8 flex items-center justify-center bg-black/80 hover:bg-red-600 rounded-full text-white transition-colors backdrop-blur-sm">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+
+                  {profileSubTab === 'saved' && (
+                    stories.filter(s => bookmarks.includes(s.id)).length === 0 ? <p className="col-span-2 text-xs text-neutral-600 p-4 text-center bg-neutral-900 rounded-xl">No saved posts yet.</p> : 
+                      stories.filter(s => bookmarks.includes(s.id)).map(story => (
+                      <div key={story.id} onClick={() => { setFocusedExplorePost(story); }} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden aspect-[4/5] relative group shadow-lg cursor-pointer">
+                        {story.imageUrl ? <img src={story.imageUrl} alt="Saved post" className="w-full h-full object-cover transition-transform group-hover:scale-105" /> : <div className={`w-full h-full bg-gradient-to-br ${story.bgGradient} p-4 flex items-center justify-center text-center text-[10px] font-bold leading-tight`}>{story.textContent}</div>}
+                        <div className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center bg-black/60 rounded-full text-white backdrop-blur-sm"><Bookmark className="w-3 h-3 fill-yellow-500 text-yellow-500" /></div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -965,20 +1076,67 @@ export default function App() {
         </div>
       </div>
 
+      {/* ===== FULL-SCREEN 24H STORY VIEWER ===== */}
+      {activeStoryView && activeStoryView.length > 0 && (
+        <div className="fixed inset-0 bg-black z-[100] flex flex-col">
+          {/* Progress Bars (Fake for now, but aesthetic) */}
+          <div className="flex gap-1 p-2 pt-safe-top z-10 absolute top-0 left-0 right-0">
+            {activeStoryView.map((_, i) => (
+               <div key={i} className={`h-1 flex-1 rounded-full ${i===0 ? 'bg-white' : 'bg-white/30'}`} />
+            ))}
+          </div>
+          
+          {/* Story Header */}
+          <div className="absolute top-6 left-0 right-0 p-4 flex justify-between items-center z-10">
+            <div className="flex items-center gap-2 drop-shadow-md">
+              <span className="text-2xl bg-neutral-900 p-1 rounded-full border border-neutral-700">{activeStoryView[0].authorEmoji}</span>
+              <div className="text-white font-bold text-sm">{activeStoryView[0].authorName} <span className="text-[10px] font-normal opacity-70 ml-2">{timeAgo(activeStoryView[0].createdAt)}</span></div>
+            </div>
+            <button onClick={() => setActiveStoryView(null)} className="p-2 bg-black/40 rounded-full text-white backdrop-blur-sm"><X className="w-5 h-5"/></button>
+          </div>
+          
+          {/* Story Content */}
+          <div className="flex-1 flex items-center justify-center bg-neutral-900 relative">
+            {activeStoryView[0].imageUrl ? (
+              <img src={activeStoryView[0].imageUrl} className="w-full h-full object-cover" />
+            ) : (
+              <div className={`w-full h-full bg-gradient-to-br ${activeStoryView[0].bgGradient} flex items-center justify-center p-8`}>
+                <p className="text-3xl font-black text-center drop-shadow-xl">{activeStoryView[0].textContent}</p>
+              </div>
+            )}
+            {activeStoryView[0].caption && (
+              <div className="absolute bottom-16 left-4 right-4 text-center">
+                 <span className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold shadow-lg inline-block">{renderCaptionWithHashtags(activeStoryView[0].caption)}</span>
+              </div>
+            )}
+          </div>
+          {/* Delete Story if Mine */}
+          {activeStoryView[0].authorId === user?.uid && (
+            <button onClick={() => { deleteStory(activeStoryView[0].id, true); setActiveStoryView(null); }} className="absolute bottom-4 right-4 p-3 bg-red-600 rounded-full text-white shadow-xl z-10"><Trash2 className="w-5 h-5"/></button>
+          )}
+        </div>
+      )}
+
       {/* ===== EXPLORE MODAL DRAWER ===== */}
       {focusedExplorePost && (
         <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setFocusedExplorePost(null)}>
           <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
              <button onClick={() => setFocusedExplorePost(null)} className="absolute top-3 right-3 p-1.5 bg-black/50 hover:bg-black/80 rounded-full z-10 text-white backdrop-blur-sm"><X className="w-4 h-4" /></button>
              <div className="aspect-[4/5] bg-black">
-               <img src={focusedExplorePost.imageUrl} className="w-full h-full object-cover" />
+               {focusedExplorePost.imageUrl ? (
+                 <img src={focusedExplorePost.imageUrl} className="w-full h-full object-cover" />
+               ) : (
+                 <div className={`w-full h-full bg-gradient-to-br ${focusedExplorePost.bgGradient} p-8 flex items-center justify-center text-center text-xl font-bold`}>{focusedExplorePost.textContent}</div>
+               )}
              </div>
              <div className="p-4 flex items-center justify-between bg-neutral-900">
                <div className="flex items-center gap-2">
                  <span className="text-xl bg-neutral-950 p-1 rounded-lg border border-neutral-800">{focusedExplorePost.authorEmoji}</span>
                  <span className="text-xs font-bold">{focusedExplorePost.authorName}</span>
                </div>
-               <div className="flex items-center gap-1.5 text-pink-500 font-bold text-xs"><Heart className="w-4 h-4 fill-pink-500" /> {focusedExplorePost.likes?.length || 0}</div>
+               <div className="flex gap-3">
+                 <div className="flex items-center gap-1.5 text-pink-500 font-bold text-xs"><Heart className="w-4 h-4 fill-pink-500" /> {focusedExplorePost.likes?.length || 0}</div>
+               </div>
              </div>
           </div>
         </div>
@@ -1037,6 +1195,7 @@ export default function App() {
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0.5rem); }
+        .pt-safe-top { padding-top: env(safe-area-inset-top, 0.5rem); }
         
         @keyframes float-up {
           0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
